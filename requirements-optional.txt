@@ -1,0 +1,6 @@
+# 선택 기능용 패키지입니다. 기본 일봉 분석에는 필요 없습니다.
+google-generativeai>=0.8
+twscrape>=0.17
+transformers>=4.44
+torch>=2.2
+streamlit>=1.37
