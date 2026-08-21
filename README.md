@@ -1,7 +1,7 @@
-# 🚀 Market Mover
+# 📈 Who Moves the Market?
 
-### Trump·Musk SNS 발언과 주가 반응의 인과 아닌 연관을 검증하는 이벤트 스터디 프로젝트
-> 트럼프·머스크의 SNS 게시물과 주식·지수 반응을 결합해, "무엇이 실제로 시장을 흔드는가"를 통계적으로 검증한 프로젝트 (BOAZ 미니프로젝트 — 화성에 갈 수 있을까?)
+### 누가 시장을 움직이는가? : 트럼프, 일론머스크 SNS 데이터 기반 주가 반응 분석
+> 도널드 트럼프와 일론 머스크의 트위터 게시물과 금융시장 데이터를 같은 시간축에 놓고 어떤 게시물 전후에 가격·거래량·변동성이 평소보다 크게 반응했는지 분석하는 프로젝트
 
 ---
 
@@ -84,25 +84,14 @@ Track1(2023-01~2025-04, 통계적 가설검정)과 Track2(2025-06 결별·2025-1
 
 ## Pipeline
 
-```text
-load_posts(원본 정제) → preprocess(topic 분류·market-relevant 필터)
-  → [선택] sentiment / novelty 컬럼 추가
-  → load_prices(yfinance + 캐시 폴백)
-  → event_windows(다음 거래일 매칭) → impact(robust z-score, 1차)
-  → contamination(다중게시·매크로·시장충격 분류)
-  → impact(CLEAN 이벤트 제외 baseline, 2차) → contamination(재적용)
-  → [Track2 수동 이벤트 병합 + LLM 내러티브 생성]
-  → stats(H1~H6 검정 + FDR 보정 + ticker 교란 통제) → [선택] placebo / RIVN 민감도
-  → plots + report(HTML 리포트) → dashboard_app.py(Streamlit)
-```
-
-파일별 상세 역할과 함수 단위 설명은 [`docs/codebase_reference.md`](../docs/codebase_reference.md)에 정리했습니다.
+(추가예정)
 
 ---
 
 ## Key Findings
 
-최종 CLEAN 표본(359건, 단어 경계 버그 수정 후) 기준 H1~H6 가설검정 결과입니다. 전체 판정 근거와 재해석 과정은 [`docs/final_report.md`](../docs/final_report.md) §6-2를 참고하세요.
+최종 CLEAN 표본(359건) 기준 H1~H6 가설검정 결과입니다. 
+전체 판정 근거와 재해석 과정은 [`docs/final_report.md`](../docs/final_report.md) §6-2를 참고하세요.
 
 | 가설 | 내용 | 최종 판정 |
 | --- | --- | --- |
@@ -115,7 +104,7 @@ load_posts(원본 정제) → preprocess(topic 분류·market-relevant 필터)
 
 ### Main Findings
 
-- ticker(TSLA/QQQ/SPY) 하나가 절대 초과수익률 분산의 **27.2%**를 설명 — topic이 추가로 설명하는 몫은 **0.3%p**뿐
+- ticker(TSLA/QQQ/SPY) 하나가 절대 초과수익률 분산의 27.2%를 설명 — topic이 추가로 설명하는 몫은 **0.3%p**뿐
 - SPY를 SPY 자기 자신과 비교하던 벤치마크 버그를 발견·수정 — 이후 통계 결과가 훨씬 보수적인 방향으로 수렴
 - topic 키워드가 단어 경계 없이 매칭되던 버그 발견(`ai`가 "said" 안에서 88% 오탐) — 수정 후 market-relevant 게시물 6,185건 → 3,015건으로 절반 가까이 감소, 오히려 CLEAN 표본은 268→359건으로 증가
 - 자체 topic 분류 정확도를 직접 라벨링해 검증 — 전체 정확도 56%, Musk 쪽 topic(precision 100%) vs Trump 쪽 topic(precision 0~40%대)의 격차를 수치로 공개
@@ -222,7 +211,7 @@ PYTHONPATH=. .venv/bin/streamlit run dashboard_app.py
 
 ## Notice
 
-본 저장소는 BOAZ 미니프로젝트 학술 연구 목적의 코드 저장소이며, 투자 조언이 아닙니다. 여기서 다루는 상관관계는 인과관계를 의미하지 않으며, 실제 투자 판단에 사용해서는 안 됩니다.
+본 프로젝트는 투자 조언이 아닙니다. 여기서 다루는 상관관계는 인과관계를 의미하지 않으며, 실제 투자 판단에 사용해서는 안 됩니다.
 
 ---
 
@@ -351,6 +340,6 @@ PYTHONPATH=. .venv/bin/python live_monitor.py --person Trump
 PYTHONPATH=. .venv/bin/python live_monitor.py --person Musk --paste "텍스트 직접 입력"
 ```
 
-가격을 예측하지 않고, topic→ticker 분류 규칙을 새 게시물에 그대로 적용해 보여주는 결정론적 필터입니다.
+가격을 예측하지 않고, topic→ticker 분류 규칙을 새 게시물에 그대로 적용해 보여주는 필터입니다.
 
 </details>
