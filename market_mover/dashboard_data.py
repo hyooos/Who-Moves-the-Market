@@ -22,6 +22,7 @@ def read_json_if_exists(path: Path) -> dict:
 def load_dashboard_data() -> dict:
     return {
         "events": read_csv_if_exists(config.PROCESSED_DIR / "events_scored.csv"),
+        "daily_prices": read_csv_if_exists(config.INTERIM_DIR / "daily_prices_scored.csv"),
         "stats": read_json_if_exists(config.TABLE_DIR / "stats_results.json"),
         "placebo_summary": read_json_if_exists(config.TABLE_DIR / "placebo_summary.json"),
         "placebo_results": read_csv_if_exists(config.TABLE_DIR / "placebo_results.csv"),

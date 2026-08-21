@@ -16,7 +16,9 @@ FREEZE_DATE = "2026-08-11"
 TRACK1_START = "2023-01-01"
 TRACK1_END = "2025-04-13"
 PRICE_START = "2022-11-01"
-PRICE_END = "2025-04-15"
+# Track1(이벤트 스터디)은 TRACK1_END까지만 쓰지만, Track2(케이스 스터디, 예: 2025년 6월
+# Trump-Musk 결별)는 그 이후 날짜의 가격 반응이 필요하므로 가격 다운로드 범위는 더 넓게 둔다.
+PRICE_END = "2026-08-20"
 MUSK_TWITTER_ACQUISITION = "2022-10-27"
 
 TICKERS = ["TSLA", "SPY", "QQQ", "GM", "F", "RIVN"]

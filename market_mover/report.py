@@ -82,7 +82,8 @@ def _label(value) -> str:
         "impact_score": "영향 점수",
         "abnormal_return": "초과수익률",
         "text_clean": "게시물 내용",
-        "narrative": "케이스 설명",
+        "narrative": "케이스 설명(LLM 원문)",
+        "narrative_reviewed": "케이스 설명(사람 검수)",
         "description": "수동 설명",
         "sentiment_label": "감성 라벨",
         "sentiment_score": "감성 점수",
@@ -139,7 +140,7 @@ def write_report(
     top_cols = [col for col in top_cols if col in events.columns]
     top_events = events.dropna(subset=["impact_score"]).nlargest(20, "impact_score")[top_cols]
     top_events = top_events.rename(columns={col: _label(col) for col in top_events.columns})
-    narrative_cols = ["event_id", "person", "posted_at", "topic", "ticker", "description", "narrative"]
+    narrative_cols = ["event_id", "person", "posted_at", "topic", "ticker", "description", "narrative", "narrative_reviewed"]
     narrative_cols = [col for col in narrative_cols if col in events.columns]
     narratives = events[events["track"].eq("track2_manual")][narrative_cols].copy() if narrative_cols else pd.DataFrame()
     narratives = narratives.rename(columns={col: _label(col) for col in narratives.columns})

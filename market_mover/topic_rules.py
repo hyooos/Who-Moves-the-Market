@@ -1,3 +1,5 @@
+import re
+
 TOPIC_KEYWORDS = {
     "tesla_business": [
         "tesla",
@@ -114,11 +116,21 @@ MUSK_MARKET_WIDE_TOPICS = {"ai", "semiconductor", "macro_economy"}
 TRUMP_QQQ_TOPICS = {"china", "tariff"}
 
 
+# 단순 substring 포함 검사(`keyword in text`)는 짧은 키워드가 다른 단어 속에 우연히
+# 끼어 들어간 경우까지 매칭시킨다. 실측 결과 "ai"는 매칭의 88%, "xi"는 100%가
+# "said", "exit"처럼 단어 일부에 낀 오탐이었다(예: "just s`ai`d that..."). 반드시
+# 단어 경계(\b)를 지켜서 매칭해야 한다.
+_KEYWORD_PATTERNS = {
+    topic: [re.compile(r"\b" + re.escape(keyword) + r"\b") for keyword in keywords]
+    for topic, keywords in TOPIC_KEYWORDS.items()
+}
+
+
 def assign_topic(text: str, person: str) -> str:
     text_l = str(text).lower()
     candidates = MUSK_TOPICS if person == "Musk" else TRUMP_TOPICS
     for topic in candidates:
-        if any(keyword in text_l for keyword in TOPIC_KEYWORDS[topic]):
+        if any(pattern.search(text_l) for pattern in _KEYWORD_PATTERNS[topic]):
             return topic
     return "other"
 
