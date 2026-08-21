@@ -335,6 +335,29 @@ def _render_price_chart_section(events: pd.DataFrame, daily_prices: pd.DataFrame
             _render_event_detail(events, picked_id)
             return
 
+    # 그 외 날짜(Track1)는 점이 너무 촘촘히 찍혀 있어(종목당 최대 1000개 이상) 정확히
+    # 클릭하기가 어렵다 — 날짜를 직접 골라서 그 근처 게시물을 바로 찾아보는 방법도 추가한다.
+    if ticker != "전체 비교(정규화)":
+        date_lookup_pool = events_f[events_f["ticker"] == ticker].dropna(subset=["event_date"]).copy()
+        date_lookup_pool = date_lookup_pool[_has_real_content(date_lookup_pool)]
+        date_lookup_pool["event_date"] = _as_datetime(date_lookup_pool["event_date"])
+        date_lookup_pool = date_lookup_pool.dropna(subset=["event_date"])
+        if not date_lookup_pool.empty:
+            with st.expander("🔍 날짜로 게시물 찾기(차트 클릭이 잘 안 될 때)"):
+                min_d = date_lookup_pool["event_date"].min().date()
+                max_d = date_lookup_pool["event_date"].max().date()
+                picked_date = st.date_input(
+                    "날짜 선택", value=max_d, min_value=min_d, max_value=max_d, key="date_lookup"
+                )
+                if st.button("이 날짜와 가장 가까운 게시물 보기", key="date_lookup_go"):
+                    diffs = (date_lookup_pool["event_date"] - pd.Timestamp(picked_date)).abs()
+                    nearest_id = date_lookup_pool.loc[diffs.idxmin(), "event_id"]
+                    st.session_state["date_lookup_result"] = nearest_id
+        picked_id = st.session_state.get("date_lookup_result")
+        if picked_id and str(events.loc[events["event_id"] == picked_id, "ticker"].squeeze()) == ticker:
+            _render_event_detail(events, picked_id)
+            return
+
     fig = go.Figure()
 
     if ticker == "전체 비교(정규화)":
@@ -445,7 +468,7 @@ def _render_price_chart_section(events: pd.DataFrame, daily_prices: pd.DataFrame
         yaxis_title="종가($)",
         plot_bgcolor="white",
         showlegend=False,
-        hovermode="x unified",
+        hovermode="closest",
     )
     fig.update_yaxes(
         range=[baseline, prices["close"].max() * 1.03],
