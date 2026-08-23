@@ -25,6 +25,9 @@ Track1(2023-01~2025-04, 통계적 가설검정)과 Track2(2025-06 결별·2025-1
 - Track2 케이스 스터디: 로컬 LLM(Ollama+Qwen2.5:7b)으로 사실 기반 내러티브 생성 + 사람 검수 레이어
 - Streamlit 대시보드: 실시간 반응강도 게이지, 가격 그라데이션 차트 클릭 조회, 가설검증표
 - 실시간 게시물 필터(`live_monitor.py`) — 가격 예측이 아닌 규칙 기반 관심 알림
+- UTC 원본 시각 보존 → 미국 동부시간(ET) 변환 → 장 마감 후/휴장일은 다음 실제 거래일로 정렬
+- 원본 게시물 ID·URL을 최종 이벤트까지 보존해 대시보드에서 원문으로 바로 이동
+- 같은 화자·ticker·topic·반응 거래일의 연속 게시물을 첫 글 기준 6시간 고정 창으로 묶어 pseudo-replication 방지
 
 ---
 
@@ -84,13 +87,36 @@ Track1(2023-01~2025-04, 통계적 가설검정)과 Track2(2025-06 결별·2025-1
 
 ## Pipeline
 
-(추가예정)
+1. `load_posts.py`: 서로 다른 Musk/Trump CSV 스키마를 공통 형식으로 바꾸고 원본 ID·URL·UTC/ET 시각을 보존합니다.
+2. `preprocess.py` + `topic_rules.py`: 분석 기간과 시장 관련 키워드를 적용하고 topic·연결 ticker를 정합니다.
+3. `event_windows.py`: ET 기준 09:30 이전은 당일, 09:30~16:00은 당일(부분 일봉 경고), 16:00 이후·주말·휴장일은 다음 거래일에 연결합니다.
+4. `event_clustering.py`: 같은 화자·ticker·topic·반응 거래일의 글을 첫 게시물 기준 6시간 고정 창으로 묶고 모든 원문·URL을 보존합니다.
+5. `impact.py` + `contamination.py`: 사건별 가격 반응 점수와 별도 사건/FOMC/시장충격 중첩 여부를 계산합니다.
+6. `stats.py`: CLEAN 사건 표본으로 가설검정과 FDR 보정을 수행합니다.
+7. `plots.py` + `report.py` + `dashboard_app.py`: 차트·HTML 리포트·클릭 가능한 Streamlit 화면을 만듭니다.
+
+세부 파일 역할과 고도화 순서는 [`PROJECT_GUIDE_KO.md`](PROJECT_GUIDE_KO.md)를 참고하세요.
+
+### 시간 정렬 원칙
+
+| ET 게시 시점 | 일봉 이벤트 거래일 | 해석 품질 |
+| --- | --- | --- |
+| 거래일 09:30 이전 | 같은 거래일 | 장 시작 후 반응을 대체로 포함 |
+| 거래일 09:30~16:00 | 같은 거래일 | 게시 전 당일 움직임이 섞여 분봉 분석 권장 |
+| 거래일 16:00 이후 | 다음 거래일 | 다음 정규장 반응에 연결 |
+| 주말·휴장일 | 다음 거래일 | 다음 정규장 반응에 연결 |
+
+`posted_at`은 기존 코드 호환용 timezone-naive UTC이며, 의미가 명확한 `posted_at_utc`, `posted_at_et`, `market_session`, `event_date_rule`, `daily_alignment_quality`를 함께 저장합니다. 미국 조기폐장일은 현재 16:00 마감을 사용하므로 후속 버전에서 거래소 캘린더 기반으로 보완할 예정입니다.
+
+### 사건 clustering 원칙
+
+일봉 하나에 같은 캠페인의 게시물 여러 개가 연결되면 같은 가격 반응을 여러 번 세는 문제가 생깁니다. 기본 분석은 `person + ticker + topic + event_date`가 같고 첫 게시물로부터 6시간 이내인 글을 하나의 사건으로 묶습니다. 직전 글과의 간격이 아니라 첫 글을 기준으로 잡아 cluster가 연쇄적으로 며칠까지 늘어나는 것을 막습니다. `--no-cluster-posts`로 기존 게시물 단위 결과를 재현하거나 `--cluster-hours`로 민감도를 비교할 수 있습니다.
 
 ---
 
 ## Key Findings
 
-최종 CLEAN 표본(359건) 기준 H1~H6 가설검정 결과입니다. 
+아래 표는 시간대·clustering 수정 전 게시물 단위 CLEAN 표본(359건)에서 나온 역사적 baseline입니다. 새 6시간 사건 clustering 결과로 전체 파이프라인을 다시 실행한 뒤 수치를 교체해야 합니다.
 전체 판정 근거와 재해석 과정은 [`docs/final_report.md`](../docs/final_report.md) §6-2를 참고하세요.
 
 | 가설 | 내용 | 최종 판정 |
@@ -117,13 +143,14 @@ Track1(2023-01~2025-04, 통계적 가설검정)과 Track2(2025-06 결별·2025-1
 
 ```bash
 .
-├── market_mover/                  # 핵심 로직 패키지 (18개 모듈)
+├── market_mover/                  # 핵심 로직 패키지
 │   ├── config.py                  # 경로·기간·티커 등 전역 설정
 │   ├── load_posts.py              # SNS 게시물 로딩·정제
 │   ├── load_prices.py             # yfinance 가격 다운로드 + 캐시 폴백
 │   ├── preprocess.py              # market-relevant 필터링
 │   ├── topic_rules.py             # 키워드 기반 topic 분류·종목 매핑
 │   ├── event_windows.py           # 이벤트 정렬(Track1/Track2)
+│   ├── event_clustering.py        # 연속 게시물 6시간 사건 clustering
 │   ├── impact.py                  # robust z-score, impact_score
 │   ├── contamination.py           # 오염 분류(CLEAN/MINOR/MAJOR)
 │   ├── novelty.py / sentiment.py  # novelty score / 감성분석(선택)
@@ -186,6 +213,26 @@ PYTHONPATH=. .venv/bin/python run_daily_pipeline.py \
 ```bash
 PYTHONPATH=. .venv/bin/streamlit run dashboard_app.py
 ```
+
+대시보드는 원본의 상단 메뉴 구성을 살린 `실시간 메인 / 개요 / 이벤트 탐색기 / 가설 검증 / 방법론 점검 / 케이스 스터디 / Ask the Data`로 구성됩니다. 실시간 메인에는 계기판과 일론 머스크·도널드 트럼프 캐릭터를 유지하고, 주가 차트 오른쪽에 작은 챗봇을 함께 배치했습니다. 전체 Ask the Data 메뉴도 별도로 유지합니다. 내부 식별자는 숨기고 화면용 사건 번호와 한국어 범주명을 사용합니다. 사건 점을 선택하면 원문, 한국어 번역, 실제 가격 반응, 전후 캔들 차트, AI 요약·분석을 확인할 수 있습니다.
+
+번역·기사 수집·AI 분석은 화면 진입 시 자동 실행하지 않습니다. 필요한 버튼을 눌렀을 때만 한 번 실행하고 같은 입력은 캐시하므로, 기존처럼 사건을 클릭할 때마다 모든 작업을 다시 호출하지 않습니다.
+
+AI provider는 왼쪽 `AI 설정`에서 선택합니다.
+
+```bash
+# Gemini
+export GEMINI_API_KEY="..."
+
+# Groq
+export GROQ_API_KEY="..."
+
+# 로컬 Ollama
+ollama serve
+ollama pull qwen2.5:7b
+```
+
+API key가 없더라도 가격 차트·필터·집계·상위 사건 조회는 동작합니다. 데이터 챗봇은 pandas가 먼저 계산하며, LLM 연결이 없으면 계산형 기본 답변으로 전환됩니다.
 
 ### Topic 분류 검증
 

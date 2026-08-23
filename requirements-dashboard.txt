@@ -1,0 +1,7 @@
+pandas>=2.0
+plotly>=5.18
+requests>=2.31
+streamlit>=1.37
+
+# 아래 provider를 쓸 때만 필요합니다. 설치돼 있어도 API key 없이는 호출하지 않습니다.
+google-generativeai>=0.8

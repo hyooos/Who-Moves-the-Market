@@ -1,5 +1,6 @@
 import pandas as pd
 
+from . import config
 from .topic_rules import map_ticker
 
 
@@ -9,6 +10,77 @@ def get_next_trading_day(date_like, trading_days: pd.DatetimeIndex):
     if pos >= len(trading_days):
         return pd.NaT
     return trading_days[pos]
+
+
+def align_post_to_trading_day(
+    posted_at,
+    trading_days: pd.DatetimeIndex,
+    assume_timezone: str = config.SOURCE_TIMEZONE,
+) -> dict:
+    """게시 시각을 미국 동부시간으로 변환하고 일봉 반응 거래일을 정합니다.
+
+    - 정규장 마감 전(장 전/장중): 같은 거래일
+    - 정규장 마감 후: 다음 거래일
+    - 주말·휴장일: 다음 거래일
+
+    원본 Track 1 시각은 UTC이고, Track 2처럼 offset 없는 수동 시각은 호출부에서
+    assume_timezone을 America/New_York으로 넘깁니다. 정규장 중 게시물은 당일
+    close-to-close 수익률에 게시 전 움직임도 섞이므로 별도 품질 라벨을 붙입니다.
+    """
+    ts = pd.Timestamp(posted_at)
+    if pd.isna(ts):
+        return {
+            "posted_at_utc": pd.NaT,
+            "posted_at_et": pd.NaT,
+            "calendar_date_et": pd.NaT,
+            "market_session": "unknown",
+            "event_date": pd.NaT,
+            "event_date_rule": "invalid_timestamp",
+            "daily_alignment_quality": "UNAVAILABLE",
+        }
+    if ts.tzinfo is None:
+        ts = ts.tz_localize(assume_timezone, ambiguous=False, nonexistent="shift_forward")
+    posted_at_utc = ts.tz_convert("UTC")
+    posted_at_et = posted_at_utc.tz_convert(config.MARKET_TIMEZONE)
+    local_date = posted_at_et.tz_localize(None).normalize()
+
+    days = pd.DatetimeIndex(pd.to_datetime(trading_days)).tz_localize(None).normalize().sort_values().unique()
+    is_trading_day = local_date in days
+    minute = posted_at_et.hour * 60 + posted_at_et.minute
+    market_open = config.MARKET_OPEN_HOUR * 60 + config.MARKET_OPEN_MINUTE
+    market_close = config.MARKET_CLOSE_HOUR * 60 + config.MARKET_CLOSE_MINUTE
+
+    if not is_trading_day:
+        market_session = "market_closed"
+        pos = days.searchsorted(local_date, side="left")
+        rule = "next_trading_day_after_market_closed"
+        quality = "DAILY_ALIGNED"
+    elif minute < market_open:
+        market_session = "premarket"
+        pos = days.searchsorted(local_date, side="left")
+        rule = "same_trading_day_after_premarket_post"
+        quality = "DAILY_ALIGNED"
+    elif minute < market_close:
+        market_session = "regular_session"
+        pos = days.searchsorted(local_date, side="left")
+        rule = "same_trading_day_partial_session"
+        quality = "PARTIAL_DAY_INTRADAY_PREFERRED"
+    else:
+        market_session = "afterhours"
+        pos = days.searchsorted(local_date, side="right")
+        rule = "next_trading_day_after_close"
+        quality = "DAILY_ALIGNED"
+
+    event_date = days[pos] if pos < len(days) else pd.NaT
+    return {
+        "posted_at_utc": posted_at_utc,
+        "posted_at_et": posted_at_et,
+        "calendar_date_et": local_date,
+        "market_session": market_session,
+        "event_date": event_date,
+        "event_date_rule": rule,
+        "daily_alignment_quality": quality,
+    }
 
 
 def build_daily_events(posts: pd.DataFrame, prices: pd.DataFrame) -> pd.DataFrame:
@@ -24,7 +96,8 @@ def build_daily_events(posts: pd.DataFrame, prices: pd.DataFrame) -> pd.DataFram
         if trading_days is None or len(trading_days) == 0:
             skipped += 1
             continue
-        event_date = get_next_trading_day(post["posted_at"], trading_days)
+        aligned = align_post_to_trading_day(post.get("posted_at_utc", post["posted_at"]), trading_days)
+        event_date = aligned["event_date"]
         if pd.isna(event_date):
             skipped += 1
             continue
@@ -32,15 +105,24 @@ def build_daily_events(posts: pd.DataFrame, prices: pd.DataFrame) -> pd.DataFram
             {
                 "event_id": f"tk1_{len(records) + 1:06d}",
                 "post_id": post["post_id"],
+                "source_post_id": post.get("source_post_id"),
+                "source_url": post.get("source_url"),
+                "source_file": post.get("source_file"),
                 "person": post["person"],
                 "posted_at": post["posted_at"],
+                "posted_at_utc": aligned["posted_at_utc"],
+                "posted_at_et": aligned["posted_at_et"],
                 "event_date": event_date,
-                "calendar_date": pd.Timestamp(post["posted_at"]).normalize(),
+                "calendar_date": aligned["calendar_date_et"],
+                "market_session": aligned["market_session"],
+                "event_date_rule": aligned["event_date_rule"],
+                "daily_alignment_quality": aligned["daily_alignment_quality"],
                 "platform": post["platform"],
                 "trump_role": post.get("trump_role"),
                 "topic": post["topic"],
                 "ticker": ticker,
                 "track": "track1_auto",
+                "text_raw": post.get("text_raw", post["text_clean"]),
                 "text_clean": post["text_clean"],
                 "engagement": post.get("engagement", 0),
                 "sentiment_label": post.get("sentiment_label"),
@@ -68,17 +150,50 @@ def prepare_track2_events(track2: pd.DataFrame, prices: pd.DataFrame) -> pd.Data
         for ticker, group in prices.groupby("ticker")
     }
     out = track2.copy()
+    out["posted_at_original"] = out["posted_at"].astype(str)
     out["posted_at"] = pd.to_datetime(out["posted_at"], errors="coerce")
     out = out.dropna(subset=["posted_at", "ticker"])
-    event_dates = []
+    if "timestamp_precision" not in out.columns:
+        out["timestamp_precision"] = "unverified"
+    else:
+        out["timestamp_precision"] = out["timestamp_precision"].fillna("unverified").astype(str).str.lower()
+    # 00:00:00은 수동 사건 CSV에서 날짜만 알려진 사건의 일반적인 자리표시입니다.
+    # 실제 자정 게시물이라고 단정하지 않고 date_only로 낮춰 표시합니다. 명시적으로
+    # timestamp_precision=exact를 넣은 행은 자동 변환하지 않습니다.
+    midnight_placeholder = (
+        out["posted_at"].map(lambda value: pd.Timestamp(value).hour == 0)
+        & out["posted_at"].map(lambda value: pd.Timestamp(value).minute == 0)
+        & out["posted_at"].map(lambda value: pd.Timestamp(value).second == 0)
+        & out["timestamp_precision"].eq("unverified")
+    )
+    out.loc[midnight_placeholder, "timestamp_precision"] = "date_only"
+    aligned_rows = []
     for _, row in out.iterrows():
         trading_days = trading_days_by_ticker.get(row["ticker"])
         if trading_days is None or len(trading_days) == 0:
-            event_dates.append(pd.NaT)
+            aligned_rows.append(align_post_to_trading_day(pd.NaT, pd.DatetimeIndex([])))
         else:
-            event_dates.append(get_next_trading_day(row["posted_at"], trading_days))
-    out["event_date"] = event_dates
-    out["calendar_date"] = out["posted_at"].dt.normalize()
+            timezone_value = row.get("posted_at_timezone")
+            assume_timezone = (
+                str(timezone_value).strip()
+                if pd.notna(timezone_value) and str(timezone_value).strip()
+                else config.TRACK2_DEFAULT_TIMEZONE
+            )
+            aligned_rows.append(
+                align_post_to_trading_day(row["posted_at"], trading_days, assume_timezone=assume_timezone)
+            )
+    aligned = pd.DataFrame(aligned_rows, index=out.index)
+    for column in aligned.columns:
+        out[column] = aligned[column]
+    date_only = out["timestamp_precision"].eq("date_only")
+    out.loc[date_only, "market_session"] = "unknown_date_only"
+    out.loc[date_only, "event_date_rule"] = "date_only_to_next_valid_trading_day"
+    out.loc[date_only, "daily_alignment_quality"] = "DATE_ONLY_MANUAL_REVIEW"
+    unverified = out["timestamp_precision"].eq("unverified")
+    out.loc[unverified, "daily_alignment_quality"] = "MANUAL_TIME_UNVERIFIED"
+    # posted_at은 기존 모듈과 정렬 호환성을 위해 timezone-naive UTC로 통일합니다.
+    out["posted_at"] = pd.to_datetime(out["posted_at_utc"], utc=True).dt.tz_localize(None)
+    out["calendar_date"] = out["calendar_date_et"]
     out["track"] = "track2_manual"
     out["contamination_level"] = None
     if "text_clean" not in out.columns:

@@ -52,10 +52,11 @@ data/
 
 | 파일 | 무슨 데이터인가 |
 | --- | --- |
-| `posts_cleaned.csv` | `data/raw/`의 원본 게시물 중 분석 기간(2023-01-01~2025-04-13)에 해당하고, topic 분류상 market-relevant로 판정된 게시물만 남긴 것(6,185건) |
+| `posts_cleaned.csv` | `data/raw/`의 원본 게시물 중 분석 기간(2023-01-01~2025-04-13)에 해당하고, topic 분류상 market-relevant로 판정된 게시물만 남긴 것. 현재 기준 3,015건이며 원본 ID·URL·UTC/ET 시각을 함께 보존 |
 | `daily_prices.csv` | yfinance에서 받은 TSLA/SPY/QQQ/GM/F/RIVN 일봉 가격 원본 캐시 |
 | `daily_prices_scored.csv` | 위 가격에 robust z-score, 초과수익률, impact_score 등을 계산해 붙인 것(2-pass baseline 적용 후 최종 버전) |
-| `events_daily.csv` | 게시물을 다음 거래일 이벤트로 정렬하고 1차 가격 피처를 붙인 테이블(오염 분류 전 단계) |
+| `events_posts_aligned.csv` | 3,015개 게시물을 ET 장 시간과 실제 가격 거래일에 연결한 게시물 단위 추적 테이블 |
+| `events_daily.csv` | 같은 화자·ticker·topic·반응 거래일의 글을 6시간 고정 창으로 묶은 사건 단위 테이블. 묶인 모든 원문·URL은 `member_*_json` 컬럼에 보존하며 장중 사건은 `PARTIAL_DAY_INTRADAY_PREFERRED`로 표시 |
 
 ---
 
@@ -63,7 +64,7 @@ data/
 
 | 파일 | 무슨 데이터인가 |
 | --- | --- |
-| `events_scored.csv` | **이 프로젝트의 최종 산출물.** 게시물 + 가격 반응(초과수익률, impact_score) + 오염 분류(CLEAN/MINOR/MAJOR) + novelty score가 전부 붙은 이벤트 테이블(6,185건). Streamlit 대시보드와 `market_mover_report.html`이 최종적으로 읽는 파일 |
+| `events_scored.csv` | **이 프로젝트의 최종 산출물.** 게시물 + 원문 URL + UTC/ET 시각 + 시장 세션 + 가격 반응(초과수익률, impact_score) + 오염 분류(CLEAN/MINOR/MAJOR) + 선택적 novelty score가 붙은 이벤트 테이블. Streamlit 대시보드와 `market_mover_report.html`이 최종적으로 읽는 파일 |
 
 ---
 
