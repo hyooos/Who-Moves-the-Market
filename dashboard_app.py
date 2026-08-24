@@ -693,33 +693,78 @@ def _render_compact_data_chat(events: pd.DataFrame, stats: dict, gauge_states: l
     st.rerun()
 
 
-def render_live_main(events: pd.DataFrame, daily_prices: pd.DataFrame, stats: dict | None = None) -> None:
+def _render_analysis_period(events: pd.DataFrame) -> tuple:
+    """페이지 맨 위에서 바로 보이는 분석 기간 위젯. (start_date, end_date) 또는
+    자료가 없으면 (None, None)을 반환한다 — 사이드바(접혀서 안 보이기 쉬움) 대신
+    본문 최상단에 둬서 다른 조작 없이 바로 설정할 수 있게 한다."""
+    st.markdown(
+        '<div style="background:#ffffff;border:1px solid #dfe4ea;border-left:4px solid #df3e52;'
+        'border-radius:12px;padding:14px 18px;margin-bottom:.9rem;">'
+        '<div style="font-weight:800;font-size:1.05rem;color:#172033;margin-bottom:2px;">분석 기간</div>'
+        '<div style="color:#64748b;font-size:.85rem;">이 화면 전체(계기판·차트·요약)가 아래에서 고른 '
+        "기간을 기준으로 계산됩니다.</div></div>",
+        unsafe_allow_html=True,
+    )
+    posted_dates = pd.to_datetime(events.get("posted_at"), errors="coerce").dropna() if not events.empty else pd.Series(dtype="datetime64[ns]")
+    if posted_dates.empty:
+        st.info("분석할 사건 자료가 아직 없어 기간을 선택할 수 없습니다. `data/raw/`에 원본 CSV를 넣고 파이프라인을 실행하면 선택할 수 있습니다.")
+        return None, None
+
+    data_min, data_max = posted_dates.min().date(), posted_dates.max().date()
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        date_range = st.date_input(
+            "분석 기간",
+            value=(data_min, data_max),
+            min_value=data_min,
+            max_value=data_max,
+            key="analysis_period",
+            label_visibility="collapsed",
+        )
+    with col2:
+        st.caption(f"보유 자료 기간: {data_min} ~ {data_max}")
+    if isinstance(date_range, tuple) and len(date_range) == 2:
+        return date_range
+    return data_min, data_max
+
+
+def render_live_main(
+    events: pd.DataFrame,
+    daily_prices: pd.DataFrame,
+    stats: dict | None = None,
+    period_start=None,
+    period_end=None,
+) -> None:
     st.subheader("최근 연결 사건의 시장 반응")
     st.caption(
         "선택한 기간에서 각 시장과 연결된 가장 최근 사건을 보여줍니다. 해당 사건 뒤의 실제 움직임을 "
         "같은 시장의 과거 사건과 비교한 값이며, 미래 주가를 예측하는 수치가 아닙니다."
     )
-    render_live_trump_feed("live_main")
 
-    posted_dates = pd.to_datetime(events.get("posted_at"), errors="coerce").dropna() if not events.empty else pd.Series(dtype="datetime64[ns]")
-    if not posted_dates.empty:
-        data_min, data_max = posted_dates.min().date(), posted_dates.max().date()
+    posted_dates_all = pd.to_datetime(events.get("posted_at"), errors="coerce").dropna() if not events.empty else pd.Series(dtype="datetime64[ns]")
+    if not posted_dates_all.empty:
+        bound_min, bound_max = posted_dates_all.min().date(), posted_dates_all.max().date()
+        default_start = period_start if period_start is not None else bound_min
+        default_end = period_end if period_end is not None else bound_max
         gcol1, gcol2 = st.columns([2, 1])
         with gcol1:
-            date_range = st.date_input(
-                "조회 기간",
-                value=(data_min, data_max),
-                min_value=data_min,
-                max_value=data_max,
+            local_range = st.date_input(
+                "이 구간의 기간",
+                value=(default_start, default_end),
+                min_value=bound_min,
+                max_value=bound_max,
+                key="live_gauge_period",
             )
         with gcol2:
-            st.caption(f"보유 자료 기간: {data_min} ~ {data_max}")
-        if isinstance(date_range, tuple) and len(date_range) == 2:
-            gauge_start, gauge_end = date_range
+            st.caption("기본값은 맨 위에서 고른 분석 기간입니다. 최근 사건이 극단값 위주라면 기간을 좁혀 다른 사건을 볼 수 있어요.")
+        if isinstance(local_range, tuple) and len(local_range) == 2:
+            gauge_start, gauge_end = local_range
         else:
-            gauge_start, gauge_end = data_min, data_max
+            gauge_start, gauge_end = default_start, default_end
     else:
-        gauge_start = gauge_end = None
+        gauge_start, gauge_end = period_start, period_end
+
+    render_live_trump_feed("live_main")
 
     with st.expander("반응 크기는 어떻게 읽나요?"):
         st.markdown(
@@ -738,12 +783,18 @@ def render_live_main(events: pd.DataFrame, daily_prices: pd.DataFrame, stats: di
     st.divider()
     chart_col, chat_col = st.columns([3.35, 1.15], gap="large")
     with chart_col:
-        _render_price_chart_section(events, daily_prices, gauge_states)
+        _render_price_chart_section(events, daily_prices, gauge_states, period_start=gauge_start, period_end=gauge_end)
     with chat_col:
         _render_compact_data_chat(events, stats or {}, gauge_states)
 
 
-def _render_price_chart_section(events: pd.DataFrame, daily_prices: pd.DataFrame, gauge_states: list) -> None:
+def _render_price_chart_section(
+    events: pd.DataFrame,
+    daily_prices: pd.DataFrame,
+    gauge_states: list,
+    period_start=None,
+    period_end=None,
+) -> None:
     st.subheader("주가 흐름과 게시물 발생 시점")
     st.caption("보라색 점은 일론 머스크, 주황색 점은 도널드 트럼프 사건입니다. 점을 선택하면 원문과 전후 주가를 확인할 수 있습니다.")
 
@@ -822,6 +873,8 @@ def _render_price_chart_section(events: pd.DataFrame, daily_prices: pd.DataFrame
         # 종목마다 가격 단위(TSLA 수백 달러 vs QQQ/SPY)가 달라 그대로 겹치면 비교가
         # 안 되므로, 각 종목의 표시 구간 첫날을 100으로 맞춘 정규화 지수로 겹쳐 그린다.
         line_colors = {"QQQ": "#2563eb", "SPY": "#16a34a", "TSLA": "#ef4444"}
+        person_colors = {"Musk": "#7c3aed", "Trump": "#f97316"}
+        legend_shown = set()
         for tkr in tickers:
             p = daily_prices[daily_prices["ticker"] == tkr].copy()
             p["date"] = _as_datetime(p["date"])
@@ -845,26 +898,36 @@ def _render_price_chart_section(events: pd.DataFrame, daily_prices: pd.DataFrame
             if not tkr_merged.empty:
                 tkr_merged["_표시인물"] = tkr_merged["person"].map(_person_label)
                 tkr_merged["_표시주제"] = tkr_merged["topic"].map(_topic_label)
-                fig.add_trace(
-                    go.Scatter(
-                        x=tkr_merged["event_date"], y=tkr_merged["indexed"], mode="markers",
-                        marker=dict(
-                            size=9,
-                            color=tkr_merged["person"].map({"Musk": "#7c3aed", "Trump": "#f97316"}).fillna("#64748b"),
-                            opacity=0.72,
-                            line=dict(width=1, color="#ffffff"),
-                        ),
-                        customdata=tkr_merged[["event_id"]].values if "event_id" in tkr_merged.columns else None,
-                        text=(tkr_merged["_표시인물"] + " · " + tkr_merged["_표시주제"]),
-                        hovertemplate="%{text}<br>%{x|%Y-%m-%d}<br>선택하면 사건 상세 보기<extra></extra>",
-                        showlegend=False,
+                for person_code, color in person_colors.items():
+                    subset = tkr_merged[tkr_merged["person"] == person_code]
+                    if subset.empty:
+                        continue
+                    fig.add_trace(
+                        go.Scatter(
+                            x=subset["event_date"], y=subset["indexed"], mode="markers",
+                            marker=dict(size=9, color=color, opacity=0.72, line=dict(width=1, color="#ffffff")),
+                            customdata=subset[["event_id"]].values if "event_id" in subset.columns else None,
+                            text=(subset["_표시인물"] + " · " + subset["_표시주제"]),
+                            hovertemplate="%{text}<br>%{x|%Y-%m-%d}<br>선택하면 사건 상세 보기<extra></extra>",
+                            name=_person_label(person_code),
+                            legendgroup=person_code,
+                            showlegend=person_code not in legend_shown,
+                        )
                     )
-                )
-        fig.update_layout(yaxis_title="조회 시작일을 100으로 환산")
+                    legend_shown.add(person_code)
+        fig.update_layout(
+            yaxis_title="조회 시작일을 100으로 환산",
+            legend=dict(
+                orientation="h", x=0, y=1.1, xanchor="left", yanchor="bottom",
+                font=dict(size=11), bgcolor="rgba(255,255,255,0)",
+            ),
+        )
         fig.update_xaxes(
             showspikes=True, spikemode="across", spikesnap="cursor",
             spikecolor="#94a3b8", spikethickness=1, spikedash="solid",
         )
+        if period_start is not None and period_end is not None:
+            fig.update_xaxes(range=[pd.Timestamp(period_start), pd.Timestamp(period_end)])
         click = st.plotly_chart(
             fig, use_container_width=True, on_select="rerun", selection_mode="points", key="live_main_chart"
         )
@@ -878,8 +941,14 @@ def _render_price_chart_section(events: pd.DataFrame, daily_prices: pd.DataFrame
         st.info(f"{ticker} 가격 데이터가 없습니다.")
         return
 
-    y_min = prices["close"].min()
-    baseline = y_min - (prices["close"].max() - y_min) * 0.05
+    if period_start is not None and period_end is not None:
+        windowed = prices[(prices["date"] >= pd.Timestamp(period_start)) & (prices["date"] <= pd.Timestamp(period_end))]
+        y_source = windowed["close"] if not windowed.empty else prices["close"]
+    else:
+        y_source = prices["close"]
+    y_min = y_source.min()
+    y_max = y_source.max()
+    baseline = y_min - (y_max - y_min) * 0.05
 
     fig.add_trace(
         go.Scatter(
@@ -901,6 +970,7 @@ def _render_price_chart_section(events: pd.DataFrame, daily_prices: pd.DataFrame
             fillcolor="rgba(37,99,235,0.14)",
             name=f"{ticker} 종가",
             hovertemplate="%{x|%Y-%m-%d}<br>종가 %{y:.2f}<extra></extra>",
+            showlegend=False,
         )
     )
 
@@ -914,38 +984,51 @@ def _render_price_chart_section(events: pd.DataFrame, daily_prices: pd.DataFrame
     if not merged.empty:
         merged["_표시인물"] = merged["person"].map(_person_label)
         merged["_표시주제"] = merged["topic"].map(_topic_label)
-        fig.add_trace(
-            go.Scatter(
-                x=merged["event_date"],
-                y=merged["close"],
-                mode="markers",
-                marker=dict(
-                    size=10,
-                    color=merged["person"].map({"Musk": "#7c3aed", "Trump": "#f97316"}).fillna("#64748b"),
-                    opacity=0.76,
-                    line=dict(width=1, color="#ffffff"),
-                ),
-                customdata=merged[["event_id"]].values if "event_id" in merged.columns else None,
-                text=(merged["_표시인물"] + " · " + merged["_표시주제"]),
-                hovertemplate="%{text}<br>%{x|%Y-%m-%d}<br>선택하면 사건 상세 보기<extra></extra>",
-                name="게시물 사건",
+        person_colors = {"Musk": "#7c3aed", "Trump": "#f97316"}
+        for person_code, color in person_colors.items():
+            subset = merged[merged["person"] == person_code]
+            if subset.empty:
+                continue
+            fig.add_trace(
+                go.Scatter(
+                    x=subset["event_date"],
+                    y=subset["close"],
+                    mode="markers",
+                    marker=dict(size=10, color=color, opacity=0.76, line=dict(width=1, color="#ffffff")),
+                    customdata=subset[["event_id"]].values if "event_id" in subset.columns else None,
+                    text=(subset["_표시인물"] + " · " + subset["_표시주제"]),
+                    hovertemplate="%{text}<br>%{x|%Y-%m-%d}<br>선택하면 사건 상세 보기<extra></extra>",
+                    name=_person_label(person_code),
+                )
             )
-        )
 
     fig.update_layout(
         height=420,
-        margin=dict(l=10, r=10, t=20, b=10),
+        margin=dict(l=10, r=10, t=40, b=10),
         yaxis_title="종가($)",
         plot_bgcolor="white",
-        showlegend=False,
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            x=0,
+            y=1.1,
+            xanchor="left",
+            yanchor="bottom",
+            font=dict(size=11),
+            bgcolor="rgba(255,255,255,0)",
+        ),
         hovermode="closest",
     )
     fig.update_yaxes(
-        range=[baseline, prices["close"].max() * 1.03],
+        range=[baseline, y_max * 1.03],
         showspikes=False,
     )
+    if period_start is not None and period_end is not None:
+        x_range = [pd.Timestamp(period_start), pd.Timestamp(period_end)]
+    else:
+        x_range = [prices["date"].min(), prices["date"].max()]
     fig.update_xaxes(
-        range=[prices["date"].min(), prices["date"].max()],
+        range=x_range,
         showspikes=True,
         spikemode="across",
         spikesnap="cursor",
@@ -1125,11 +1208,17 @@ def _render_event_detail(events: pd.DataFrame, selected_event_id, widget_scope: 
     )
     contam_value = row.get("contamination_level")
     contam_display = "뉴스 기반 수동 정리" if is_track2 or pd.isna(contam_value) else _contam_label(contam_value)
-    metric_cols[3].metric(
-        "원인 구분 가능성",
-        contam_display,
-        help="같은 시점에 다른 게시물·경제 일정·시장 충격이 함께 있었는지를 반영합니다.",
-    )
+    with metric_cols[3]:
+        # 이 값은 "다른 요인 일부 있음"처럼 문장형 텍스트라 st.metric의 큰 숫자용
+        # 폰트로 넣으면 잘려서 글자 하나만 확대된 것처럼 보인다 — 직접 작은 카드로 그린다.
+        st.markdown(
+            f'<div title="같은 시점에 다른 게시물·경제 일정·시장 충격이 함께 있었는지를 반영합니다." '
+            'style="padding-top:2px;">'
+            '<div style="font-size:.8rem;color:rgb(49,51,63);opacity:.75;">원인 구분 가능성</div>'
+            f'<div style="font-size:1rem;font-weight:600;color:#172033;margin-top:6px;line-height:1.35;">'
+            f'{html.escape(contam_display)}</div></div>',
+            unsafe_allow_html=True,
+        )
 
     provider, model_name = _current_llm()
     original_for_translation = _safe_text(
@@ -1146,6 +1235,8 @@ def _render_event_detail(events: pd.DataFrame, selected_event_id, widget_scope: 
                 st.session_state[translation_key] = _cached_translate_preview(
                     original_for_translation[:4000], provider, model_name
                 )
+        if provider == "none":
+            st.caption("이 버튼은 AI 서비스를 선택해야 눌립니다 — 왼쪽 사이드바 'AI 요약 설정'에서 제미나이·그록·올라마 중 하나를 선택해주세요.")
         if translation_key in st.session_state:
             with st.expander("한국어 번역", expanded=True):
                 st.write(st.session_state[translation_key])
@@ -1212,7 +1303,10 @@ def _render_event_detail(events: pd.DataFrame, selected_event_id, widget_scope: 
             st.markdown(f"**요약**\n\n{summary_part}")
         st.info(f"**분석**\n\n{analysis_part}")
     elif provider == "none":
-        st.info("AI 요약을 사용하지 않는 상태입니다. 위 수치는 원본 분석 결과에서 바로 계산한 값입니다.")
+        st.info(
+            "위 버튼은 AI 서비스를 선택해야 눌립니다 — 왼쪽 사이드바 'AI 요약 설정'에서 제미나이·그록·올라마 중 "
+            "하나를 선택해주세요. 지금은 AI 요약 없이 원본 분석 결과에서 바로 계산한 수치만 보여주는 상태입니다."
+        )
 
     _render_price_context_chart(row_ticker, row.get("event_date"), widget_scope=widget_scope)
 
@@ -1895,6 +1989,12 @@ def main() -> None:
             "SNS 발언 이후 시장은 어떻게 움직였을까?",
             "일론 머스크와 도널드 트럼프의 게시물·발언 이후 테슬라, 나스닥 100, S&P 500이 실제로 얼마나 움직였는지 확인합니다.",
         )
+        period_start, period_end = _render_analysis_period(events)
+        if period_start is not None and not events.empty:
+            event_dates_all = pd.to_datetime(events.get("event_date"), errors="coerce")
+            events_scope = events.loc[(event_dates_all.dt.date >= period_start) & (event_dates_all.dt.date <= period_end)]
+        else:
+            events_scope = events
         st.markdown(
             '<div class="intro-panel"><b>이 프로그램은 무엇을 보여주나요?</b><br>'
             "게시물이나 발언이 나온 시점과 다음 거래일의 가격·거래량·변동성을 연결해, 평소보다 큰 움직임이 있었는지 비교합니다. "
@@ -1902,14 +2002,13 @@ def main() -> None:
             unsafe_allow_html=True,
         )
         summary_cols = st.columns(4)
-        clean_count = int(events.get("contamination_level", pd.Series(dtype=str)).eq("CLEAN").sum()) if not events.empty else 0
-        event_dates = pd.to_datetime(events.get("event_date"), errors="coerce") if not events.empty else pd.Series(dtype="datetime64[ns]")
-        period_text = "-" if not event_dates.notna().any() else f"{event_dates.min():%Y.%m}~{event_dates.max():%Y.%m}"
-        summary_cols[0].metric("분석한 사건", f"{len(events):,}건")
+        clean_count = int(events_scope.get("contamination_level", pd.Series(dtype=str)).eq("CLEAN").sum()) if not events_scope.empty else 0
+        period_text = f"{period_start:%Y.%m.%d}~{period_end:%Y.%m.%d}" if period_start is not None else "-"
+        summary_cols[0].metric("분석한 사건", f"{len(events_scope):,}건")
         summary_cols[1].metric("분석 기간", period_text)
-        summary_cols[2].metric("관련 시장", f"{events['ticker'].nunique() if 'ticker' in events else 0:,}개")
+        summary_cols[2].metric("관련 시장", f"{events_scope['ticker'].nunique() if 'ticker' in events_scope else 0:,}개")
         summary_cols[3].metric("원인 비교적 명확", f"{clean_count:,}건")
-        render_live_main(events, data["daily_prices"], stats)
+        render_live_main(events, data["daily_prices"], stats, period_start=period_start, period_end=period_end)
 
     with tabs[1]:
         _render_page_header(
