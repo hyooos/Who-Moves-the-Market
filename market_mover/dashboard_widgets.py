@@ -18,6 +18,7 @@
 import base64
 import html
 import math
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -117,6 +118,136 @@ def compute_ticker_gauges(events: pd.DataFrame, tickers=("QQQ", "SPY", "TSLA"), 
     return results
 
 
+_TENSION_BY_TOPIC = {
+    "tariff": 100,
+    "trade_policy": 88,
+    "doge_budget_feud": 86,
+    "china": 72,
+    "fed_rates": 68,
+    "macro_economy": 60,
+    "jobs_economy": 54,
+    "semiconductor": 48,
+    "ai": 44,
+    "autonomy_robotaxi": 40,
+    "tesla_business": 34,
+}
+_INTENSE_WORDS = re.compile(
+    r"\b(war|crash|destroy|disaster|fraud|criminal|corrupt|emergency|threat|"
+    r"tariff|sanction|attack|insane|terrible|worst|fake|hoax|traitor|fight|"
+    r"역겹|최악|범죄|부패|전쟁|공격|위협|재앙|충격)\w*\b",
+    flags=re.IGNORECASE,
+)
+
+
+def _linguistic_intensity(text: str) -> float:
+    """문장 표현 강도를 0~100으로 환산하는 설명 가능한 휴리스틱."""
+    text = str(text or "")
+    words = re.findall(r"[A-Za-z가-힣']+", text)
+    uppercase = sum(1 for word in words if len(word) >= 3 and word.isupper())
+    uppercase_ratio = uppercase / max(len(words), 1)
+    exclamations = text.count("!")
+    intense_hits = len(_INTENSE_WORDS.findall(text))
+    return min(
+        100.0,
+        min(uppercase_ratio / 0.20, 1.0) * 35
+        + min(exclamations / 3, 1.0) * 20
+        + min(intense_hits / 4, 1.0) * 45,
+    )
+
+
+def compute_person_madness_gauges(
+    events: pd.DataFrame,
+    persons=("Trump", "Musk"),
+    start_date=None,
+    end_date=None,
+    recent_days: int = 7,
+) -> list:
+    """인물별 최근 게시 흐름을 0~100 표현강도 지수로 만든다.
+
+    Track2는 큰 사건만 선별한 표본이라 게시 빈도를 왜곡하므로, 연속적으로 수집된
+    Track1 게시물만 사용한다. 지수는 최근 7일 게시 빈도의 과거 백분위(45%),
+    대문자·느낌표·강한 표현(35%), 긴장도가 높은 topic 구성(20%)의 가중합이다.
+    정신상태 진단이나 시장 예측값이 아니라 대시보드용 휴리스틱이다.
+    """
+    if events.empty or "person" not in events.columns:
+        return [{**_empty_gauge_state(person), "person": person, "mode": "person_madness"} for person in persons]
+
+    base = events.copy()
+    if "track" in base.columns:
+        track1 = base[~base["track"].fillna("").astype(str).eq("track2_manual")]
+        if not track1.empty:
+            base = track1
+    base["_posted"] = pd.to_datetime(base.get("posted_at"), errors="coerce")
+    base = base.dropna(subset=["_posted"])
+    if start_date is not None:
+        base = base[base["_posted"] >= pd.Timestamp(start_date)]
+    if end_date is not None:
+        base = base[base["_posted"] < pd.Timestamp(end_date) + pd.Timedelta(days=1)]
+
+    results = []
+    for person in persons:
+        history = base[base["person"].astype(str).eq(person)].sort_values("_posted").copy()
+        if history.empty:
+            results.append({**_empty_gauge_state(person), "person": person, "mode": "person_madness"})
+            continue
+
+        latest = history.iloc[-1]
+        latest_time = latest["_posted"]
+        recent_start = latest_time.normalize() - pd.Timedelta(days=recent_days - 1)
+        recent = history[history["_posted"] >= recent_start].copy()
+
+        day_counts = history.groupby(history["_posted"].dt.normalize()).size()
+        full_days = pd.date_range(day_counts.index.min(), day_counts.index.max(), freq="D")
+        rolling_counts = day_counts.reindex(full_days, fill_value=0).rolling(recent_days, min_periods=1).sum()
+        recent_count = int(len(recent))
+        frequency_score = float((rolling_counts <= recent_count).mean() * 100) if len(rolling_counts) else 0.0
+
+        texts = recent.get("text_clean", pd.Series(index=recent.index, dtype=str)).fillna("").astype(str)
+        content_score = float(texts.map(_linguistic_intensity).mean()) if len(texts) else 0.0
+        topics = recent.get("topic", pd.Series(index=recent.index, dtype=str)).fillna("").astype(str)
+        topic_score = float(topics.map(lambda topic: _TENSION_BY_TOPIC.get(topic, 40)).mean()) if len(topics) else 0.0
+        madness_index = round(0.45 * frequency_score + 0.35 * content_score + 0.20 * topic_score, 1)
+
+        original_text = str(latest.get("text_clean") or latest.get("description") or "")
+        recent_posts = []
+        for _, post in history.tail(9).sort_values("_posted", ascending=False).iterrows():
+            recent_posts.append(
+                {
+                    "posted_at": str(post.get("posted_at") or ""),
+                    "topic": str(post.get("topic") or ""),
+                    "ticker": str(post.get("ticker") or ""),
+                    "original_text": str(post.get("text_clean") or post.get("description") or ""),
+                    "translated_text": "",
+                    "source_url": str(post.get("source_url") or ""),
+                }
+            )
+        results.append(
+            {
+                "has_data": True,
+                "mode": "person_madness",
+                "ticker": latest.get("ticker"),
+                "person": person,
+                "topic": latest.get("topic"),
+                "posted_at": str(latest.get("posted_at")),
+                "text_preview": original_text,
+                "original_text": original_text,
+                "translated_text": "",
+                "recent_posts": recent_posts,
+                "t": madness_index / 100,
+                "percentile": madness_index / 100,
+                "madness_index": madness_index,
+                "frequency_score": round(frequency_score, 1),
+                "content_score": round(content_score, 1),
+                "topic_score": round(topic_score, 1),
+                "recent_post_count": recent_count,
+                "recent_days": recent_days,
+                "clean_n": len(history),
+                "is_curated": False,
+            }
+        )
+    return results
+
+
 def _empty_gauge_state(ticker: str) -> dict:
     return {
         "has_data": False,
@@ -148,23 +279,101 @@ def _point(theta_deg: float, r: float, cx: float = _CX, cy: float = _CY) -> tupl
 
 # 감정 캐리커처(calm/annoyed/angry/furious)와 맞춰 게이지도 4등분한다.
 _GAUGE_ZONES = [
-    (0.00, "#3b82f6", "낮음"),
+    (0.00, "#22c55e", "낮음"),
     (0.25, "#facc15", "보통"),
-    (0.50, "#f97316", "큰 편"),
+    (0.50, "#f59e0b", "큰 편"),
     (0.75, "#ef4444", "매우 큼"),
 ]
 
 
+def render_person_post_html(state: dict) -> str:
+    """최근 게시물 3장이 한 화면에 보이는 가로 슬라이드와 더보기 목록."""
+    person = html.escape(str(state.get("person") or "-"))
+    posts = state.get("recent_posts") or [
+        {
+            "posted_at": state.get("posted_at"),
+            "topic": state.get("topic"),
+            "ticker": state.get("ticker"),
+            "original_text": state.get("original_text"),
+            "translated_text": state.get("translated_text"),
+        }
+    ]
+
+    slides = []
+    more_rows = []
+    for index, post in enumerate(posts, start=1):
+        posted_at = html.escape(str(post.get("posted_at") or "-"))
+        topic = html.escape(str(post.get("topic") or "-"))
+        ticker = html.escape(str(post.get("ticker") or "-"))
+        original = html.escape(str(post.get("original_text") or "(원문 없음)"))
+        translated = html.escape(str(post.get("translated_text") or "번역을 불러오는 중입니다."))
+        source_url = html.escape(str(post.get("source_url") or ""), quote=True)
+        link = (
+            f'<a href="{source_url}" target="_blank" rel="noopener" '
+            f'style="color:#93c5fd;text-decoration:none;">원문 열기 ↗</a>'
+            if source_url
+            else ""
+        )
+        slides.append(f'''
+        <article style="flex:0 0 calc((100% - 24px)/3);min-width:0;background:#0b1220;
+                       border:1px solid #334155;border-radius:13px;padding:12px;scroll-snap-align:start;">
+          <div style="display:flex;justify-content:space-between;gap:6px;font-size:9.5px;color:#94a3b8;
+                      margin-bottom:8px;"><span>#{index} · {topic}</span><span>{ticker}</span></div>
+          <div style="font-size:9.5px;color:#64748b;margin-bottom:4px;">{posted_at}</div>
+          <div style="font-size:10px;color:#94a3b8;margin-bottom:3px;">원문</div>
+          <div style="font-size:11.5px;color:#f8fafc;line-height:1.5;height:90px;overflow-y:auto;
+                      word-break:break-word;">{original}</div>
+          <div style="height:1px;background:#334155;margin:8px 0;"></div>
+          <div style="font-size:10px;color:#93c5fd;margin-bottom:3px;">한국어 번역</div>
+          <div style="font-size:11.5px;color:#dbeafe;line-height:1.5;height:90px;overflow-y:auto;
+                      word-break:break-word;">{translated}</div>
+          <div style="font-size:9.5px;margin-top:8px;min-height:14px;">{link}</div>
+        </article>''')
+        if index > 3:
+            more_rows.append(f'''
+            <div style="padding:10px 0;border-top:1px solid #334155;">
+              <div style="font-size:10px;color:#94a3b8;margin-bottom:5px;">#{index} · {posted_at} · {topic} · {ticker}</div>
+              <div style="font-size:11.5px;color:#e2e8f0;line-height:1.55;">{original}</div>
+              <div style="font-size:11.5px;color:#bfdbfe;line-height:1.55;margin-top:5px;">{translated}</div>
+            </div>''')
+
+    more_html = ""
+    if more_rows:
+        more_html = f'''
+        <details style="margin-top:12px;background:#0b1220;border:1px solid #334155;border-radius:11px;padding:10px 12px;">
+          <summary style="cursor:pointer;color:#93c5fd;font-size:12px;font-weight:700;">
+            더보기 +{len(more_rows)}개
+          </summary>
+          <div style="max-height:380px;overflow-y:auto;margin-top:9px;">{''.join(more_rows)}</div>
+        </details>'''
+
+    return _flatten(f"""
+    <div style="background:linear-gradient(135deg,#172033,#0b1220);border:1px solid #334155;
+                border-radius:18px;box-shadow:0 10px 26px rgba(2,6,23,0.24);padding:16px 17px;
+                margin-top:4px;margin-bottom:18px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px;">
+        <div style="font-size:15px;font-weight:800;color:#f8fafc;">{person} 최근 게시물</div>
+        <div style="font-size:10.5px;color:#94a3b8;text-align:right;">한 화면에 3개 · 좌우로 스크롤</div>
+      </div>
+      <div style="display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;padding:1px 1px 10px;">
+        {''.join(slides)}
+      </div>
+      {more_html}
+    </div>
+    """)
+
+
 def render_single_gauge_html(state: dict) -> str:
     """종목 1개짜리 소형 게이지. 세 개를 나란히 놓고 한눈에 비교하는 용도."""
-    ticker = html.escape(str(state.get("ticker") or "-"))
+    person_mode = state.get("mode") == "person_madness"
+    ticker = html.escape(str(state.get("person") if person_mode else state.get("ticker") or "-"))
 
     if not state.get("has_data"):
         return _flatten(f"""
-        <div style="background:linear-gradient(135deg,#1e293b,#0f172a);border-radius:14px;
-                    padding:16px;color:#94a3b8;text-align:center;font-size:13px;
+        <div style="background:linear-gradient(135deg,#1e293b,#0f172a);border:1px solid #334155;border-radius:20px;
+                    box-shadow:0 12px 30px rgba(2,6,23,0.30);padding:20px;color:#94a3b8;text-align:center;font-size:13px;
                     font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
-          <div style="font-weight:700;color:#f1f5f9;margin-bottom:6px;">{ticker}</div>
+          <div style="font-weight:800;color:#f8fafc;margin-bottom:6px;">{ticker}</div>
           선택하신 기간 안에는 이 종목({ticker})에 매핑된 게시물이 없습니다 — 기간을 넓혀보세요.
         </div>
         """)
@@ -181,7 +390,7 @@ def render_single_gauge_html(state: dict) -> str:
         x2, y2 = _point(theta_end, _R)
         zones_svg.append(
             f'<path d="M {_CX} {_CY} L {x1:.1f} {y1:.1f} A {_R} {_R} 0 0 1 {x2:.1f} {y2:.1f} Z" '
-            f'fill="{color}" opacity="0.32"/>'
+            f'fill="{color}" opacity="0.92"/>'
         )
 
     ticks_svg = []
@@ -194,7 +403,8 @@ def render_single_gauge_html(state: dict) -> str:
         x2, y2 = _point(theta, r2)
         ticks_svg.append(
             f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" '
-            f'stroke="{"#334155" if is_major else "#94a3b8"}" stroke-width="{2 if is_major else 1}"/>'
+            f'stroke="{"#374151" if is_major else "#ffffff"}" stroke-width="{3 if is_major else 1.4}" '
+            f'stroke-linecap="round" opacity="{1 if is_major else 0.72}"/>'
         )
 
     rotate_deg = 180 * t - 90
@@ -214,12 +424,12 @@ def render_single_gauge_html(state: dict) -> str:
     if isinstance(ar, (int, float)) and pd.notna(ar):
         if ar > 0:
             direction_badge = (
-                f'<span style="background:#7f1d1d;color:#fecaca;font-size:13px;font-weight:700;'
+                f'<span style="background:#fee2e2;color:#b91c1c;font-size:13px;font-weight:700;'
                 f'padding:3px 10px;border-radius:999px;">📈 상승 +{ar*100:.1f}%</span>'
             )
         elif ar < 0:
             direction_badge = (
-                f'<span style="background:#1e3a8a;color:#bfdbfe;font-size:13px;font-weight:700;'
+                f'<span style="background:#dbeafe;color:#1d4ed8;font-size:13px;font-weight:700;'
                 f'padding:3px 10px;border-radius:999px;">📉 하락 {ar*100:.1f}%</span>'
             )
         else:
@@ -234,6 +444,37 @@ def render_single_gauge_html(state: dict) -> str:
         else ""
     )
 
+    if person_mode:
+        direction_badge = (
+            f'<span style="display:inline-block;background:#172554;color:#bfdbfe;font-size:11px;font-weight:700;'
+            f'padding:4px 8px;border-radius:999px;margin:2px;">빈도 {state.get("frequency_score", 0):.0f}</span>'
+            f'<span style="display:inline-block;background:#3f1d38;color:#fbcfe8;font-size:11px;font-weight:700;'
+            f'padding:4px 8px;border-radius:999px;margin:2px;">문장 강도 {state.get("content_score", 0):.0f}</span>'
+            f'<span style="display:inline-block;background:#422006;color:#fde68a;font-size:11px;font-weight:700;'
+            f'padding:4px 8px;border-radius:999px;margin:2px;">주제 긴장도 {state.get("topic_score", 0):.0f}</span>'
+        )
+        gauge_caption = (
+            f'최근 {int(state.get("recent_days", 7))}일 게시물 {int(state.get("recent_post_count", 0))}건의 '
+            f'빈도·표현·주제를 합산한 흐름 지수'
+        )
+        details_html = (
+            f'<div style="font-size:11px;color:#94a3b8;margin-top:8px;line-height:1.5;text-align:center;">'
+            f'최근 기준 시각 {posted_at}<br/>가장 최근 주제 · {topic}</div>'
+        )
+        preview_html = ""
+        curated_badge = ""
+    else:
+        gauge_caption = f"반응 크기가 과거 {clean_n}건 중 상위 {pct_txt}에 해당"
+        details_html = (
+            f'<div style="font-size:12px;color:#cbd5e1;margin-top:8px;line-height:1.5;">'
+            f'<b>{person}</b> · {topic}<br/><span style="color:#94a3b8;">{posted_at}</span></div>'
+        )
+        preview_html = f'''
+        <div style="font-size:10.5px;color:#94a3b8;margin-top:8px;">📝 이 게시물 원문(번역, 요약 아님)</div>
+        <div style="margin-top:2px;padding:8px 10px;background:#0b1220;border-radius:10px;
+                    font-size:12px;color:#e2e8f0;border:1px solid #334155;word-break:break-word;
+                    line-height:1.5;height:110px;overflow-y:auto;">{text_preview or '(원문 없음)'}</div>'''
+
     # 게이지를 4등분해서(0~25/25~50/50~75/75~100%) 그 게시물 인물의 감정 캐리커처로
     # 지금 어떤 구간인지 한눈에 보이게 한다.
     emotion_html = ""
@@ -242,48 +483,48 @@ def render_single_gauge_html(state: dict) -> str:
         quadrant = min(3, int(pct * 4))
         uri = _emotion_data_uri(person_name, quadrant)
         if uri:
-            emotion_html = f'<img src="{uri}" width="40" height="40" style="border-radius:50%;border:2px solid #334155;" />'
+            emotion_html = (
+                f'<img src="{uri}" width="96" height="96" '
+                f'style="display:block;border-radius:50%;border:4px solid #ffffff;object-fit:cover;'
+                f'box-shadow:0 8px 22px rgba(15,23,42,0.18);" />'
+            )
 
     svg_h = _CY + 46
 
     return _flatten(f"""
-<div style="background:linear-gradient(135deg,#1e293b,#0f172a);border-radius:14px;
-            padding:16px;color:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
-  <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:2px;">
-    <div style="font-weight:800;font-size:16px;">{ticker}</div>
+<div style="background:linear-gradient(135deg,#1e293b,#0f172a);border:1px solid #334155;border-radius:20px;
+            box-shadow:0 12px 30px rgba(2,6,23,0.30);padding:18px 16px 16px;color:#f8fafc;margin-bottom:26px;
+            font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+  <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;margin-bottom:-4px;">
     {emotion_html}
+    <div style="font-weight:850;font-size:17px;color:#f8fafc;letter-spacing:0.02em;">{ticker}</div>
   </div>
   <div style="position:relative;width:{_CX*2}px;height:{svg_h}px;margin:0 auto;">
     <svg viewBox="0 0 {_CX*2} {svg_h}" width="{_CX*2}" height="{svg_h}">
-      <path d="M {_CX-_R-14} {_CY} A {_R+14} {_R+14} 0 0 1 {_CX+_R+14} {_CY} L {_CX+_R+14} {_CY+4}
-               L {_CX-_R-14} {_CY+4} Z" fill="#f8fafc" opacity="0.06"/>
+      <path d="M {_CX-_R-14} {_CY} A {_R+14} {_R+14} 0 0 1 {_CX+_R+14} {_CY}"
+            fill="none" stroke="#e5e7eb" stroke-width="8" stroke-linecap="round"/>
       {''.join(zones_svg)}
       {''.join(ticks_svg)}
-      <circle cx="{_CX}" cy="{_CY}" r="{_R+2}" fill="none" stroke="#334155" stroke-width="1.5"/>
+      <path d="M {_CX-_R} {_CY} A {_R} {_R} 0 0 1 {_CX+_R} {_CY}"
+            fill="none" stroke="#30343b" stroke-width="7" stroke-linecap="round"/>
       <g style="transform-origin:{_CX}px {_CY}px;animation:needle-live 3.2s ease-in-out infinite;">
         <g style="transform-origin:{_CX}px {_CY}px;transform:rotate({rotate_deg:.1f}deg);">
           <polygon points="{_CX-3},{_CY} {_CX+3},{_CY} {_CX+1},{_CY-needle_len} {_CX-1},{_CY-needle_len}"
-                   fill="#f87171"/>
+                   fill="#ffffff" stroke="#d1d5db" stroke-width="1.4"/>
         </g>
       </g>
-      <circle cx="{_CX}" cy="{_CY}" r="7" fill="#1e293b" stroke="#f87171" stroke-width="2"/>
+      <circle cx="{_CX}" cy="{_CY}" r="13" fill="#30343b" stroke="#20242a" stroke-width="2"/>
+      <circle cx="{_CX}" cy="{_CY}" r="6" fill="#ffffff"/>
       <text x="{_CX}" y="{_CY+28}" text-anchor="middle" font-size="19" font-weight="800"
-            fill="#f1f5f9">{pct_txt}</text>
+            fill="#f8fafc">{pct_txt}</text>
     </svg>
   </div>
   <div style="font-size:11px;color:#94a3b8;text-align:center;margin-top:2px;">
-    반응 크기가 과거 {clean_n}건 중 상위 {pct_txt}에 해당</div>
+    {gauge_caption}</div>
   <div style="text-align:center;margin-top:6px;">{direction_badge}</div>
   {curated_badge}
-  <div style="font-size:12px;color:#cbd5e1;margin-top:8px;line-height:1.5;">
-    <b>{person}</b> · {topic}<br/><span style="color:#94a3b8;">{posted_at}</span>
-  </div>
-  <div style="font-size:10.5px;color:#64748b;margin-top:8px;">📝 이 게시물 원문(번역, 요약 아님)</div>
-  <div style="margin-top:2px;padding:8px 10px;background:#0f172a;border-radius:8px;
-              font-size:12px;color:#e2e8f0;border:1px solid #334155;word-break:break-word;
-              line-height:1.5;height:110px;overflow-y:auto;">
-    {text_preview or '(원문 없음)'}
-  </div>
+  {details_html}
+  {preview_html}
 </div>
 <style>
 @keyframes needle-live {{

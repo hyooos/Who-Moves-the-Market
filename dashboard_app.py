@@ -5,6 +5,7 @@ from pathlib import Path
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import requests
 import streamlit as st
 
 from market_mover.dashboard_data import (
@@ -13,7 +14,12 @@ from market_mover.dashboard_data import (
     significant_test_count,
     stats_tests_frame,
 )
-from market_mover.dashboard_widgets import compute_ticker_gauges, render_single_gauge_html, render_mac_window_html
+from market_mover.dashboard_widgets import (
+    compute_person_madness_gauges,
+    render_person_post_html,
+    render_single_gauge_html,
+    render_mac_window_html,
+)
 from market_mover.case_narratives import (
     generate_event_commentary,
     fetch_article_markdown,
@@ -83,14 +89,31 @@ def _looks_korean(text: str) -> bool:
     return hangul >= max(3, len(text) * 0.15)
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=3600)
 def _cached_translate_preview(text: str) -> str:
-    """게이지 카드의 원문 미리보기(영어 원문)를 한국어로 번역한다. Track2 설명처럼
-    이미 한국어인 텍스트는 그대로 두고 불필요한 LLM 호출을 건너뛴다."""
+    """Ollama 없이도 동작하는 번역 폴백. 긴 연결 오류는 화면에 노출하지 않는다."""
     if not text or _looks_korean(text):
         return text
-    translated = translate_to_korean(text)
-    return translated.strip() or text
+    try:
+        response = requests.get(
+            "https://translate.googleapis.com/translate_a/single",
+            params={"client": "gtx", "sl": "auto", "tl": "ko", "dt": "t", "q": text[:4500]},
+            timeout=12,
+            headers={"User-Agent": "Mozilla/5.0"},
+        )
+        response.raise_for_status()
+        translated = "".join(part[0] for part in response.json()[0] if part and part[0]).strip()
+        if translated:
+            return translated
+    except Exception:
+        pass
+    try:
+        translated = translate_to_korean(text).strip()
+        if translated and not translated.startswith("(번역 실패:"):
+            return translated
+    except Exception:
+        pass
+    return "번역 서비스를 연결하지 못했습니다. 잠시 후 새로고침해 주세요."
 
 
 def _has_real_content(df: pd.DataFrame) -> pd.Series:
@@ -215,11 +238,13 @@ def _render_ask_data_box(gauge_states: list) -> None:
             "효과크기": stats.get("effect_sizes", {}),
             "전체_이벤트_수": stats.get("n_total"),
             "단일요인_이벤트_수": stats.get("n_clean"),
-            "종목별_게이지_현황": [
+            "인물별_최근게시물_흐름지수": [
                 {
-                    "종목": g.get("ticker"),
-                    "반응크기_백분위": g.get("percentile"),
-                    "최근_게시물_인물": g.get("person"),
+                    "인물": g.get("person"),
+                    "흐름지수": g.get("madness_index"),
+                    "게시빈도점수": g.get("frequency_score"),
+                    "문장강도점수": g.get("content_score"),
+                    "주제긴장도점수": g.get("topic_score"),
                     "최근_게시물_topic": g.get("topic"),
                 }
                 for g in gauge_states
@@ -237,15 +262,11 @@ def _cached_ask_data_answer(question: str, context: dict) -> str:
 
 
 def render_live_main(events: pd.DataFrame, daily_prices: pd.DataFrame) -> None:
-    st.subheader("📊 최근 게시물 반응강도 게이지 — 종목별 비교")
+    st.subheader("📊 Trump vs Musk 최근 게시물 흐름 지수")
     st.caption(
-        "이 숫자는 실시간 계산이 아니라 **회고적(retrospective)** 지표입니다. "
-        "각 게이지는 아래에서 고른 기간 안에서 그 종목에 매핑된 게시물 중 가장 최근 것을 보여주므로 "
-        "종목마다 게시 시점이 다른 게 정상입니다(예: QQQ 관련 최근 게시물과 TSLA 관련 최근 게시물은 날짜가 다름). "
-        "이 숫자는 그 게시물 **다음 거래일의 실제 가격 반응**으로 계산되기 때문에, "
-        "방금 올라온 글에 대해서는 계산할 수 없습니다 — 시장이 아직 반응할 시간이 없었으니까요. "
-        "그리고 이 프로젝트가 가진 데이터 자체가 2025-10-23 이후로는 없어서, 기간을 아무리 넓게 잡아도 "
-        "그 이후는 볼 수 없습니다 — 진짜 지금 이 순간의 새 글은 바로 아래 실시간 감지 패널에서만 확인 가능합니다."
+        "각 인물의 최근 7일 게시 빈도, 문장 표현 강도, 긴장도가 높은 주제 비중을 합쳐 0~100으로 표시합니다. "
+        "정신상태를 진단하는 수치나 시장 예측값이 아니라, 수집된 게시 패턴을 재미있고 투명하게 비교하기 위한 휴리스틱입니다. "
+        "큰 사건만 선별된 Track2는 빈도를 왜곡하므로 연속 수집된 Track1 게시물만 계산에 사용합니다."
     )
     render_live_trump_feed()
 
@@ -255,7 +276,7 @@ def render_live_main(events: pd.DataFrame, daily_prices: pd.DataFrame) -> None:
         gcol1, gcol2 = st.columns([2, 1])
         with gcol1:
             date_range = st.date_input(
-                "게이지 계산 기간(이 기간 안에서 종목별 '가장 최근' 게시물을 찾습니다)",
+                "흐름 계산 기간(이 기간 안에서 인물별 최신 7일을 비교합니다)",
                 value=(data_min, data_max),
                 min_value=data_min,
                 max_value=data_max,
@@ -271,21 +292,32 @@ def render_live_main(events: pd.DataFrame, daily_prices: pd.DataFrame) -> None:
 
     with st.expander("ℹ️ 이 게이지는 어떻게 계산되나요?"):
         st.markdown(
-            "- **바늘 위치·%**: 선택한 기간 안에서 그 종목에 매핑된 가장 최근 게시물의 반응이, "
-            "그 종목의 과거 사례들과 비교했을 때 **얼마나 큰 편이었는지**(순위, 방향 아님)를 나타냅니다.\n"
-            "- **📈/📉 배지**: 그 게시물 다음 거래일 주가가 실제로 **올랐는지/내렸는지**와 그 폭(%)입니다. "
-            "게이지 자체는 크기만 보여주므로 방향은 이 배지로 따로 확인하세요.\n"
-            "- 회고적(retrospective) 지표입니다 — 미래 반응을 예측하지 않습니다(§8-1)."
+            "- **게시 빈도 45%**: 최근 7일 게시물 수가 그 인물의 과거 7일 구간 중 어느 정도로 많은지 계산합니다.\n"
+            "- **문장 강도 35%**: 대문자, 느낌표, 충돌·위기 관련 강한 표현의 밀도를 계산합니다.\n"
+            "- **주제 긴장도 20%**: 관세·무역 갈등·예산 충돌처럼 시장 불확실성과 가까운 topic 비중을 반영합니다.\n"
+            "- 지수 구간에 따라 calm → annoyed → angry → furious 일러스트가 함께 바뀝니다. "
+            "이 값은 정신상태 진단, 인과 추론 또는 투자 신호가 아닙니다."
         )
 
-    gauge_states = compute_ticker_gauges(events, tickers=("QQQ", "SPY", "TSLA"), start_date=gauge_start, end_date=gauge_end)
-    gauge_cols = st.columns(3)
-    with st.spinner("원문 미리보기 번역 중..."):
+    gauge_states = compute_person_madness_gauges(
+        events,
+        persons=("Trump", "Musk"),
+        start_date=gauge_start,
+        end_date=gauge_end,
+        recent_days=7,
+    )
+    gauge_cols = st.columns(2)
+    with st.spinner("최근 게시물 번역 중..."):
         for col, gstate in zip(gauge_cols, gauge_states):
-            if gstate.get("text_preview"):
-                gstate = dict(gstate, text_preview=_cached_translate_preview(gstate["text_preview"]))
+            translated_posts = []
+            for post in gstate.get("recent_posts", []):
+                translated_posts.append(
+                    dict(post, translated_text=_cached_translate_preview(post.get("original_text", "")))
+                )
+            gstate = dict(gstate, recent_posts=translated_posts)
             with col:
                 st.markdown(render_single_gauge_html(gstate), unsafe_allow_html=True)
+                st.markdown(render_person_post_html(gstate), unsafe_allow_html=True)
 
     st.divider()
     left_col, right_col = st.columns([7, 3])
@@ -1043,4 +1075,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
