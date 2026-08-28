@@ -5,9 +5,13 @@ from pathlib import Path
 import pandas as pd
 import requests
 
-# LLM이 "Musk"를 스스로 한글로 옮기게 두면 "무스크"처럼 잘못 표기하는 경우가 있어서,
-# 아예 번역하지 않고 영문 이름("Musk"/"Trump") 그대로 쓰도록 고정한다.
-_PERSON_KO = {"Musk": "Musk", "Trump": "Trump"}
+# 인물 이름은 화면 전체에서 같은 한국어 표기를 사용한다.
+_PERSON_KO = {"Musk": "일론 머스크", "Trump": "도널드 트럼프"}
+DEFAULT_LLM_MODELS = {
+    "gemini": "gemini-3.6-flash",
+    "groq": "llama-3.3-70b-versatile",
+    "ollama": "qwen2.5:7b",
+}
 
 
 def fetch_article_markdown(url: str, timeout: int = 20) -> str:
@@ -48,7 +52,7 @@ def build_narrative_prompt(event: dict, article_md: str, price_context: dict) ->
 
 이벤트 정보:
 - 인물: {person_ko}
-- 게시/발언 시각: {event.get('posted_at')}
+- 게시/발언 시각(미국 동부시간 우선): {event.get('posted_at_et') or event.get('posted_at')}
 - 주제: {event.get('topic')}
 - 종목/지수: {event.get('ticker')}
 - 수동 설명: {event.get('description') or event.get('text_clean') or ''}
@@ -74,19 +78,54 @@ def build_narrative_prompt(event: dict, article_md: str, price_context: dict) ->
 
 
 def generate_with_gemini(prompt: str, model_name: str) -> str:
+    """Google의 최신 ``google-genai`` SDK로 Gemini를 호출합니다."""
     api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY 또는 GOOGLE_API_KEY 환경변수가 없습니다.")
 
     try:
-        import google.generativeai as genai
-    except ImportError:
-        raise ImportError("google-generativeai 패키지가 설치되어 있지 않습니다.")
+        from google import genai
+    except ImportError as exc:
+        raise ImportError(
+            "google-genai 패키지가 설치되어 있지 않습니다. "
+            "run_streamlit.bat을 다시 실행하거나 'pip install google-genai'를 실행해주세요."
+        ) from exc
 
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel(model_name)
-    response = model.generate_content(prompt)
-    return response.text.strip()
+    client = genai.Client(api_key=api_key)
+    response = client.models.generate_content(
+        model=model_name or DEFAULT_LLM_MODELS["gemini"],
+        contents=prompt,
+    )
+    text = getattr(response, "text", None)
+    if not text or not str(text).strip():
+        raise RuntimeError("Gemini가 텍스트 응답을 반환하지 않았습니다.")
+    return str(text).strip()
+
+
+def test_llm_connection(provider: str, model_name: str = None) -> tuple[bool, str]:
+    """짧은 실제 요청을 보내 현재 provider와 모델의 연결 가능 여부를 확인합니다."""
+    provider = (provider or "none").lower()
+    if provider == "none":
+        return False, "AI 서비스가 선택되지 않았습니다."
+    try:
+        result = generate_text(
+            "연결 상태 확인용 요청입니다. 한국어로 '연결 성공'이라고만 답하세요.",
+            provider=provider,
+            model_name=model_name,
+        )
+        if not result or not str(result).strip():
+            return False, "응답이 비어 있습니다."
+        return True, f"{provider} 연결 성공 · {model_name or DEFAULT_LLM_MODELS.get(provider)}"
+    except Exception as exc:
+        message = str(exc).strip() or exc.__class__.__name__
+        lowered = message.lower()
+        if "api key" in lowered or "api_key" in lowered or "401" in lowered or "unauth" in lowered:
+            message = "API 키 인증에 실패했습니다. 키가 올바른지 확인해주세요."
+        elif "404" in lowered or "not found" in lowered or ("model" in lowered and "not" in lowered):
+            message = f"모델을 사용할 수 없습니다: {model_name or DEFAULT_LLM_MODELS.get(provider)}"
+        elif "429" in lowered or "quota" in lowered or "rate" in lowered:
+            message = "사용 한도 또는 호출 제한에 도달했습니다. 잠시 후 다시 시도해주세요."
+        return False, message[:350]
 
 
 def generate_with_groq(prompt: str, model_name: str) -> str:
@@ -149,6 +188,21 @@ def generate_with_ollama(prompt: str, model_name: str, max_attempts: int = 3) ->
     raise RuntimeError(f"{max_attempts}회 재시도에도 중국어가 섞여서 반환됨: {last_response[:80]}")
 
 
+def generate_text(prompt: str, provider: str = "ollama", model_name: str = None) -> str:
+    """대시보드와 batch pipeline이 같은 LLM provider 선택 로직을 사용하게 합니다."""
+    provider = (provider or "none").lower()
+    model_name = model_name or DEFAULT_LLM_MODELS.get(provider)
+    if provider == "gemini":
+        return generate_with_gemini(prompt, model_name)
+    if provider == "groq":
+        return generate_with_groq(prompt, model_name)
+    if provider == "ollama":
+        return generate_with_ollama(prompt, model_name)
+    if provider == "none":
+        raise RuntimeError("LLM provider가 꺼져 있습니다.")
+    raise ValueError(f"지원하지 않는 LLM provider입니다: {provider}")
+
+
 def generate_case_narrative(
     event: dict,
     article_md: str,
@@ -158,22 +212,10 @@ def generate_case_narrative(
 ) -> str:
     prompt = build_narrative_prompt(event, article_md, price_context)
     provider = provider.lower()
-    defaults = {
-        "gemini": "gemini-1.5-flash",
-        "groq": "llama-3.3-70b-versatile",
-        "ollama": "qwen2.5:7b",
-    }
-    model_name = model_name or defaults.get(provider)
     try:
-        if provider == "gemini":
-            return generate_with_gemini(prompt, model_name)
-        if provider == "groq":
-            return generate_with_groq(prompt, model_name)
-        if provider == "ollama":
-            return generate_with_ollama(prompt, model_name)
         if provider == "none":
             return fallback_narrative(event, "LLM provider가 none으로 설정되었습니다.")
-        return fallback_narrative(event, f"지원하지 않는 LLM provider입니다: {provider}")
+        return generate_text(prompt, provider=provider, model_name=model_name)
     except Exception as exc:
         return fallback_narrative(event, f"{provider} 생성 실패: {exc}")
 
@@ -268,7 +310,7 @@ def build_dashboard_commentary_prompt(event: dict, ticker_stats: dict, content_t
         "MAJOR": "다른 요인(같은 날 다른 게시물, 매크로 이벤트, 시장 전체 충격 등)과 많이 섞여 있어 이 게시물 하나의 영향이라고 보기 어려운 경우",
     }
     contamination_text = (
-        "Track2(수동 등록 사건 — 다른 요인과의 혼재 여부는 개별 확인 필요)"
+        "2025년 4월 이후 뉴스로 정리한 사건(다른 요인과 겹쳤는지는 개별 확인 필요)"
         if contamination is None or (isinstance(contamination, float) and pd.isna(contamination))
         else _CONTAM_DESC.get(str(contamination), str(contamination))
     )
@@ -281,7 +323,7 @@ def build_dashboard_commentary_prompt(event: dict, ticker_stats: dict, content_t
 
 게시물 메타데이터(요약 대상 아님, 분석에만 참고):
 - 인물: {person_ko}(반드시 이 표기 그대로 쓸 것 — "무스크"처럼 다르게 쓰지 말 것)
-- 게시 시각: {event.get('posted_at')}
+- 게시 시각(미국 동부시간 우선): {event.get('posted_at_et') or event.get('posted_at')}
 - 규칙 기반 분류 topic: {event.get('topic')}
 - 매핑된 종목: {event.get('ticker')}
 - 이 게시물 다음 거래일의 실제 주가 변화: {ar_text}
@@ -316,20 +358,26 @@ def build_dashboard_commentary_prompt(event: dict, ticker_stats: dict, content_t
 한국어 해설:"""
 
 
-def generate_event_commentary(event: dict, ticker_stats: dict, content_text: str = None, model_name: str = "qwen2.5:7b") -> str:
+def generate_event_commentary(
+    event: dict,
+    ticker_stats: dict,
+    content_text: str = None,
+    provider: str = "ollama",
+    model_name: str = None,
+) -> str:
     prompt = build_dashboard_commentary_prompt(event, ticker_stats, content_text=content_text)
     try:
-        return generate_with_ollama(prompt, model_name)
+        return generate_text(prompt, provider=provider, model_name=model_name)
     except Exception as exc:
-        return f"판단보류: 로컬 LLM(Ollama) 호출에 실패했습니다({exc}). Ollama가 실행 중인지 확인하세요."
+        return f"판단보류: AI 요약을 생성하지 못했습니다({exc}). 왼쪽의 AI 요약 설정을 확인하세요."
 
 
 def build_translation_prompt(text: str) -> str:
     return f"""다음 영어(또는 외국어) 기사 본문을 자연스러운 한국어로 번역하세요.
 요약하지 말고 원문의 내용을 빠짐없이 번역할 것. 마크다운 링크나 이미지 문법은 그대로 두되
 본문 텍스트만 한국어로 옮길 것. 번역문 외에 다른 설명은 붙이지 말 것.
-인물 이름 표기: "Elon Musk"/"Musk"는 한글로 옮기지 말고 "Musk"로, "Donald Trump"/"Trump"도
-한글로 옮기지 말고 "Trump"로 그대로 쓸 것("무스크" 등으로 표기하지 말 것).
+인물 이름 표기: "Elon Musk"/"Musk"는 "일론 머스크"로, "Donald Trump"/"Trump"는
+"도널드 트럼프"로 표기할 것.
 
 원문:
 {text[:4000]}
@@ -337,18 +385,22 @@ def build_translation_prompt(text: str) -> str:
 한국어 번역:"""
 
 
-def translate_to_korean(text: str, model_name: str = "qwen2.5:7b") -> str:
+def translate_to_korean(
+    text: str,
+    provider: str = "ollama",
+    model_name: str = None,
+) -> str:
     if not text or not text.strip():
         return text
     prompt = build_translation_prompt(text)
     try:
-        return generate_with_ollama(prompt, model_name, max_attempts=3)
+        return generate_text(prompt, provider=provider, model_name=model_name)
     except Exception as exc:
         return f"(번역 실패: {exc})\n\n{text}"
 
 
 def build_ask_data_prompt(question: str, context: dict) -> str:
-    return f"""당신은 "Who Moves the Market?"이라는 프로젝트 대시보드에 붙어있는 질의응답
+    return f"""당신은 "SNS 발언과 주가 반응" 프로젝트 대시보드에 붙어있는 질의응답
 도우미입니다. 아래 "제공된 데이터"에 있는 내용만으로 답하세요. 데이터에 없는 내용은 추측하지
 말고 "제공된 데이터로는 답할 수 없습니다"라고 답하세요.
 
@@ -362,15 +414,22 @@ def build_ask_data_prompt(question: str, context: dict) -> str:
 - 위 데이터에 있는 사실만 사용할 것 — 없는 내용을 지어내지 말 것.
 - "CLEAN 표본", "백분위", "impact_score" 같은 통계 용어 대신 쉬운 말로 풀어서 답할 것.
 - 미래 예측이나 투자 조언을 하지 말 것 — 이 프로젝트는 회고적 통계 도구다.
-- 인물 이름은 한글로 옮기지 말고 "Musk", "Trump"로 그대로 표기할 것("무스크" 등으로 쓰지 말 것).
-- 2~4문장 이내로 간결하게 답할 것.
+- 인물 이름은 "일론 머스크", "도널드 트럼프"로 표기할 것.
+- 질문에 적용된 필터와 표본 수를 먼저 확인하고, 평균과 중앙값을 혼동하지 말 것.
+- 상위 사건을 언급할 때는 제공된 사건 번호와 날짜를 함께 쓸 것.
+- 4~8문장 이내로 답하되 비교 질문이면 두 집단을 모두 설명할 것.
 
 답변:"""
 
 
-def answer_data_question(question: str, context: dict, model_name: str = "qwen2.5:7b") -> str:
+def answer_data_question(
+    question: str,
+    context: dict,
+    provider: str = "ollama",
+    model_name: str = None,
+) -> str:
     prompt = build_ask_data_prompt(question, context)
     try:
-        return generate_with_ollama(prompt, model_name)
+        return generate_text(prompt, provider=provider, model_name=model_name)
     except Exception as exc:
-        return f"판단보류: 로컬 LLM(Ollama) 호출에 실패했습니다({exc}). Ollama가 실행 중인지 확인하세요."
+        return f"판단보류: AI 답변을 생성하지 못했습니다({exc}). 왼쪽의 AI 요약 설정을 확인하세요."

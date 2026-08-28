@@ -82,6 +82,8 @@ def _label(value) -> str:
         "impact_score": "영향 점수",
         "abnormal_return": "초과수익률",
         "text_clean": "게시물 내용",
+        "text_raw": "게시물 원문",
+        "cluster_size": "묶인 게시물 수",
         "narrative": "케이스 설명(LLM 원문)",
         "narrative_reviewed": "케이스 설명(사람 검수)",
         "description": "수동 설명",
@@ -128,6 +130,10 @@ def write_report(
         "event_id",
         "person",
         "event_date",
+        "posted_at_et",
+        "market_session",
+        "event_date_rule",
+        "cluster_size",
         "topic",
         "ticker",
         "sentiment_label",
@@ -136,6 +142,7 @@ def write_report(
         "impact_score",
         "abnormal_return",
         "text_clean",
+        "source_url",
     ]
     top_cols = [col for col in top_cols if col in events.columns]
     top_events = events.dropna(subset=["impact_score"]).nlargest(20, "impact_score")[top_cols]

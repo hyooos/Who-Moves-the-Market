@@ -95,13 +95,15 @@ def fetch_trump_feed(limit: int) -> list:
 
 def fetch_post_text(link: str) -> str:
     """개별 게시물 페이지를 Jina Reader로 가져와 본문만 추출한다."""
-    import re
-
     response = requests.get(f"https://r.jina.ai/{link}", timeout=20)
     response.raise_for_status()
-    match = re.search(r'Title: Donald J\. Trump: "(.*)"', response.text)
-    if match:
-        return match.group(1)
+    title_prefix = 'Title: Donald J. Trump: "'
+    title_block, separator, _ = response.text.partition("\n\nURL Source:")
+    if separator and title_block.startswith(title_prefix):
+        text = title_block[len(title_prefix):]
+        if text.endswith('"'):
+            text = text[:-1]
+        return text.strip()
     return ""
 
 
@@ -172,7 +174,7 @@ def main():
         for item in reversed(new_items):
             text = fetch_post_text(item["link"])
             if not text:
-                print(f"  (본문 없음 — 리트윗/이미지 전용 게시물로 보임: {item['link']})")
+                print(f"  (원문 확인 필요 — 링크에서 직접 확인하세요: {item['link']})")
                 continue
             result = classify_and_report("Trump", text, today_log)
             print_result(result)

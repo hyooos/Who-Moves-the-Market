@@ -27,6 +27,20 @@ MARKET_PROXY = {"TSLA": "QQQ", "QQQ": "SPY", "SPY": "SPY"}
 
 TRUMP_PRESIDENT_START = "2025-01-20"
 
+# 원본 Musk/Trump CSV의 게시 시각은 UTC(+00:00)입니다. 분석 화면과 거래일
+# 정렬에는 미국 동부시간을 사용합니다. 정규장은 09:30~16:00으로 두되,
+# 조기폐장일은 별도 거래소 캘린더가 필요한 후속 보완 항목입니다.
+SOURCE_TIMEZONE = "UTC"
+MARKET_TIMEZONE = "America/New_York"
+MARKET_OPEN_HOUR = 9
+MARKET_OPEN_MINUTE = 30
+MARKET_CLOSE_HOUR = 16
+MARKET_CLOSE_MINUTE = 0
+
+# Track 2 수동 사건 CSV에서 timezone offset이 생략된 시각은 미국 동부시간으로
+# 입력했다고 해석합니다. offset이 포함된 값은 해당 offset을 그대로 존중합니다.
+TRACK2_DEFAULT_TIMEZONE = MARKET_TIMEZONE
+
 OUTPUT_FOLDERS = [
     INTERIM_DIR,
     PROCESSED_DIR,

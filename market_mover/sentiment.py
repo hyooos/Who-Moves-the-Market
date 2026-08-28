@@ -25,8 +25,13 @@ class TwitterRobertaSentiment:
         self.model_name = model_name
         self.classifier = pipeline("sentiment-analysis", model=model_name, tokenizer=model_name)
 
-    def predict(self, texts):
-        outputs = self.classifier(list(texts), truncation=True, max_length=512)
+    def predict(self, texts, batch_size: int = 64):
+        outputs = self.classifier(
+            list(texts),
+            truncation=True,
+            max_length=512,
+            batch_size=batch_size,
+        )
         rows = []
         for output in outputs:
             label = output["label"]
@@ -41,14 +46,33 @@ class TwitterRobertaSentiment:
         return pd.DataFrame(rows)
 
 
-def add_sentiment_columns(posts: pd.DataFrame, model_name: str = DEFAULT_MODEL, batch_size: int = 64) -> pd.DataFrame:
+def add_sentiment_columns(
+    posts: pd.DataFrame,
+    model_name: str = DEFAULT_MODEL,
+    batch_size: int = 64,
+    text_column: str = "text_clean",
+) -> pd.DataFrame:
+    """텍스트 감성을 계산해 기존 데이터프레임에 안전하게 덮어씁니다.
+
+    사건 clustering 이후에는 ``cluster_text_clean``을 전달해 대표 게시물 한 건이
+    아니라 묶인 사건 전체 문장을 기준으로 감성을 계산할 수 있습니다.
+    """
     if posts.empty:
-        return posts
+        return posts.copy()
+    if text_column not in posts.columns:
+        raise ValueError(f"감성분석 텍스트 컬럼이 없습니다: {text_column}")
     analyzer = TwitterRobertaSentiment(model_name)
-    chunks = []
+    result = posts.copy()
+    prediction_chunks = []
     for start in range(0, len(posts), batch_size):
-        chunk = posts.iloc[start:start + batch_size].copy()
-        preds = analyzer.predict(chunk["text_clean"].fillna("").astype(str).tolist())
+        chunk = result.iloc[start:start + batch_size]
+        preds = analyzer.predict(
+            chunk[text_column].fillna("").astype(str).tolist(),
+            batch_size=batch_size,
+        )
         preds.index = chunk.index
-        chunks.append(pd.concat([chunk, preds], axis=1))
-    return pd.concat(chunks).sort_index()
+        prediction_chunks.append(preds)
+    predictions = pd.concat(prediction_chunks).sort_index()
+    for column in predictions.columns:
+        result[column] = predictions[column]
+    return result.sort_index()

@@ -6,6 +6,7 @@ import pandas as pd
 from market_mover import config
 from market_mover.case_narratives import build_case_narratives
 from market_mover.contamination import classify_contamination, load_fomc_calendar
+from market_mover.event_clustering import DEFAULT_CLUSTER_HOURS, cluster_daily_events
 from market_mover.event_windows import add_daily_event_windows, build_daily_events, prepare_track2_events
 from market_mover.impact import compute_price_features
 from market_mover.load_posts import load_all_posts
@@ -85,6 +86,17 @@ def parse_args():
         default=config.FREEZE_DATE,
         help="리포트에 표시할 분석 기준일입니다.",
     )
+    parser.add_argument(
+        "--cluster-hours",
+        type=float,
+        default=DEFAULT_CLUSTER_HOURS,
+        help="같은 화자/ticker/topic/반응 거래일의 연속 게시물을 묶는 고정 시간 창입니다(기본 6시간).",
+    )
+    parser.add_argument(
+        "--no-cluster-posts",
+        action="store_true",
+        help="게시물 clustering을 끄고 기존처럼 게시물 1개를 이벤트 1개로 취급합니다(민감도 비교용).",
+    )
     return parser.parse_args()
 
 
@@ -109,8 +121,6 @@ def main():
 
     raw_posts = load_all_posts()
     posts = preprocess_posts(raw_posts)
-    if args.add_sentiment:
-        posts = add_sentiment_columns(posts, model_name=args.sentiment_model)
     if args.add_novelty:
         posts = add_novelty_scores(posts)
     filtering_summary = summarize_filtering(raw_posts, posts)
@@ -124,7 +134,19 @@ def main():
     prices = load_or_download_daily_prices()
 
     fomc_calendar = load_fomc_calendar(config.MANUAL_DIR / "fomc_calendar.csv")
-    events = build_daily_events(posts, prices)
+    post_events = build_daily_events(posts, prices)
+    post_events.to_csv(config.INTERIM_DIR / "events_posts_aligned.csv", index=False)
+    cluster_hours = 0.0 if args.no_cluster_posts else args.cluster_hours
+    events = cluster_daily_events(post_events, window_hours=cluster_hours)
+    if args.add_sentiment:
+        # 통계 단위는 게시물 한 건이 아니라 6시간 안의 연속 게시물을 묶은 사건이다.
+        # 대표 게시물의 감성만 남지 않도록 clustering이 끝난 뒤 사건 전체 문장을 분석한다.
+        sentiment_text_column = "cluster_text_clean" if "cluster_text_clean" in events.columns else "text_clean"
+        events = add_sentiment_columns(
+            events,
+            model_name=args.sentiment_model,
+            text_column=sentiment_text_column,
+        )
     first_pass_prices = compute_price_features(prices)
     events = add_daily_event_windows(events, first_pass_prices)
     events = classify_contamination(events, prices, fomc_calendar)
@@ -193,7 +215,9 @@ def main():
             {
                 "원본_게시물_수": len(raw_posts),
                 "시장관련_게시물_수": len(posts),
-                "Track1_이벤트_수": len(events),
+                "Track1_정렬게시물_수": len(post_events),
+                "Track1_클러스터_이벤트_수": len(events),
+                "cluster_window_hours": cluster_hours,
                 "Track2_이벤트_수": len(track2),
                 "내러티브_생성": bool(args.build_narratives),
                 "LLM_provider": args.llm_provider if args.build_narratives else None,

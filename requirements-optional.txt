@@ -1,5 +1,5 @@
 # 선택 기능용 패키지입니다. 기본 일봉 분석에는 필요 없습니다.
-google-generativeai>=0.8
+google-genai>=1.0
 twscrape>=0.17
 transformers>=4.44
 torch>=2.2

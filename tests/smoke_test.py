@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 
 from market_mover.contamination import classify_contamination
+from market_mover.event_clustering import cluster_daily_events
 from market_mover.event_windows import add_daily_event_windows, build_daily_events
 from market_mover.impact import compute_price_features
 from market_mover.preprocess import preprocess_posts
@@ -70,6 +71,7 @@ def main():
     posts = preprocess_posts(make_posts())
     scored_prices = compute_price_features(prices)
     events = build_daily_events(posts, prices)
+    events = cluster_daily_events(events, window_hours=6)
     events = classify_contamination(events, prices, pd.DataFrame(columns=["date", "event_type"]))
     events = add_daily_event_windows(events, scored_prices)
     stats = run_stats(events)
@@ -81,6 +83,8 @@ def main():
     assert "exploratory_novelty_correlation" in stats["tests"]
     assert "multiple_testing" in stats
     assert "posthoc" in stats
+    assert {"posted_at_utc", "posted_at_et", "market_session", "event_date_rule"}.issubset(events.columns)
+    assert {"cluster_size", "member_post_ids_json", "cluster_text_clean"}.issubset(events.columns)
     print("smoke test passed")
 
 

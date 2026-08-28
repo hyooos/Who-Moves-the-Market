@@ -8,6 +8,8 @@ from . import config
 
 TEXT_COLUMNS = ["text", "tweet", "content", "body", "message", "full_text"]
 DATE_COLUMNS = ["posted_at", "date", "datetime", "created_at", "timestamp", "time"]
+ID_COLUMNS = ["id", "post_id", "tweet_id", "status_id"]
+URL_COLUMNS = ["post_url", "url", "twitter_url", "tweet_url", "permalink", "link"]
 LIKE_COLUMNS = ["likes", "favorite_count", "favorites", "like_count"]
 RETWEET_COLUMNS = ["retweets", "retweet_count", "reposts", "share_count"]
 REPLY_COLUMNS = ["replies", "reply_count", "comments", "comment_count"]
@@ -48,6 +50,16 @@ def find_first_column(df: pd.DataFrame, candidates: list) -> Optional[str]:
         if key in normalized_to_original:
             return normalized_to_original[key]
     return None
+
+
+def coerce_bool(series: pd.Series) -> pd.Series:
+    """CSV의 bool/0·1/문자열 값을 안전하게 boolean으로 통일합니다.
+
+    ``astype(bool)``은 문자열 ``"False"``도 True로 바꾸므로 원본 CSV를 읽을 때
+    사용하면 안 됩니다. 알 수 없는 값과 결측은 보수적으로 False로 취급합니다.
+    """
+    normalized = series.astype("string").str.strip().str.lower()
+    return normalized.isin({"true", "1", "yes", "y", "t"})
 
 
 def infer_person(path: Path) -> str:
@@ -93,10 +105,21 @@ def normalize_post_file(path: Path) -> pd.DataFrame:
         )
 
     out = pd.DataFrame()
-    out["posted_at"] = pd.to_datetime(df[date_col], errors="coerce", utc=True).dt.tz_localize(None)
+    posted_at_utc = pd.to_datetime(df[date_col], errors="coerce", utc=True)
+    # 기존 모듈과 CSV 호환성을 위해 posted_at은 timezone-naive UTC로 유지하되,
+    # 의미가 명확한 UTC/ET 컬럼을 함께 보존합니다. 거래일 정렬은 posted_at_et를 씁니다.
+    out["posted_at"] = posted_at_utc.dt.tz_localize(None)
+    out["posted_at_utc"] = posted_at_utc
+    out["posted_at_et"] = posted_at_utc.dt.tz_convert(config.MARKET_TIMEZONE)
     out["person"] = infer_person(path)
     out["text_raw"] = df[text_col].astype(str)
     out["text_clean"] = out["text_raw"].map(clean_text)
+
+    id_col = find_first_column(df, ID_COLUMNS)
+    url_col = find_first_column(df, URL_COLUMNS)
+    out["source_post_id"] = df[id_col].astype("string") if id_col else pd.Series(pd.NA, index=df.index, dtype="string")
+    out["source_url"] = df[url_col].astype("string") if url_col else pd.Series(pd.NA, index=df.index, dtype="string")
+    out["source_file"] = path.name
 
     platform_col = find_first_column(df, PLATFORM_COLUMNS)
     out["platform_raw"] = df[platform_col].astype(str) if platform_col else ""
@@ -129,12 +152,12 @@ def normalize_post_file(path: Path) -> pd.DataFrame:
     out["trump_role"] = out.apply(assign_trump_role, axis=1)
 
     deleted_col = find_first_column(df, DELETED_COLUMNS)
-    out["is_deleted"] = df.loc[out.index, deleted_col].fillna(False).astype(bool) if deleted_col else False
+    out["is_deleted"] = coerce_bool(df.loc[out.index, deleted_col]) if deleted_col else False
 
     is_reply_col = find_first_column(df, IS_REPLY_COLUMNS)
     reply_to_col = find_first_column(df, REPLY_TO_USERNAME_COLUMNS)
     if is_reply_col is not None:
-        is_reply = df.loc[out.index, is_reply_col].fillna(False).astype(bool)
+        is_reply = coerce_bool(df.loc[out.index, is_reply_col])
         reply_to_username = (
             df.loc[out.index, reply_to_col].fillna("").astype(str).str.lower()
             if reply_to_col is not None
@@ -189,5 +212,16 @@ def load_all_posts(raw_dir: Path = config.RAW_DIR) -> pd.DataFrame:
     if missing:
         print(f"[게시물] 경고: 다음 인물의 CSV가 없습니다: {sorted(missing)}")
     posts = pd.concat(frames, ignore_index=True)
+
+    # 같은 원본 파일이 이름만 달라져 data/raw에 두 번 들어간 경우를 방어합니다.
+    # source id가 있으면 인물+id로, id가 없는 행은 인물+UTC시각+원문으로 중복 제거합니다.
+    before = len(posts)
+    has_id = posts["source_post_id"].notna() & posts["source_post_id"].astype(str).str.strip().ne("")
+    with_id = posts[has_id].drop_duplicates(["person", "source_post_id"], keep="first")
+    without_id = posts[~has_id].drop_duplicates(["person", "posted_at", "text_raw"], keep="first")
+    posts = pd.concat([with_id, without_id], ignore_index=True)
+    dropped = before - len(posts)
+    if dropped:
+        print(f"[게시물] 원본 ID/시각/본문 기준 중복 {dropped}건 제거")
     posts = posts.sort_values("posted_at").reset_index(drop=True)
     return posts

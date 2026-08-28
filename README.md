@@ -23,8 +23,12 @@ Track1(2023-01~2025-04, 통계적 가설검정)과 Track2(2025-06 결별·2025-1
 - ticker 교란 통제 보조검정 + η² 효과크기 분해로 "진짜 원인" 재검증
 - topic 분류 정확도 직접 라벨링·평가(`audit_topics.py`) — 키워드 룰 기반 분류의 한계를 수치로 공개
 - Track2 케이스 스터디: 로컬 LLM(Ollama+Qwen2.5:7b)으로 사실 기반 내러티브 생성 + 사람 검수 레이어
-- Streamlit 대시보드: 실시간 반응강도 게이지, 가격 그라데이션 차트 클릭 조회, 가설검증표
+- Streamlit 서비스: 반응강도 게이지, 머스크·트럼프 캐릭터, 감성 표시, 사건 검색, 데이터 질문
+- Gemini 3.6 Flash: 공식 `google-genai` SDK를 사용한 원문 번역·사건 요약·데이터 질문과 실제 연결 테스트
 - 실시간 게시물 필터(`live_monitor.py`) — 가격 예측이 아닌 규칙 기반 관심 알림
+- UTC 원본 시각 보존 → 미국 동부시간(ET) 변환 → 장 마감 후/휴장일은 다음 실제 거래일로 정렬
+- 원본 게시물 ID·URL을 최종 이벤트까지 보존해 대시보드에서 원문으로 바로 이동
+- 같은 화자·ticker·topic·반응 거래일의 연속 게시물을 첫 글 기준 6시간 고정 창으로 묶어 pseudo-replication 방지
 
 ---
 
@@ -84,13 +88,36 @@ Track1(2023-01~2025-04, 통계적 가설검정)과 Track2(2025-06 결별·2025-1
 
 ## Pipeline
 
-(추가예정)
+1. `load_posts.py`: 서로 다른 Musk/Trump CSV 스키마를 공통 형식으로 바꾸고 원본 ID·URL·UTC/ET 시각을 보존합니다.
+2. `preprocess.py` + `topic_rules.py`: 분석 기간과 시장 관련 키워드를 적용하고 topic·연결 ticker를 정합니다.
+3. `event_windows.py`: ET 기준 09:30 이전은 당일, 09:30~16:00은 당일(부분 일봉 경고), 16:00 이후·주말·휴장일은 다음 거래일에 연결합니다.
+4. `event_clustering.py`: 같은 화자·ticker·topic·반응 거래일의 글을 첫 게시물 기준 6시간 고정 창으로 묶고 모든 원문·URL을 보존합니다.
+5. `impact.py` + `contamination.py`: 사건별 가격 반응 점수와 별도 사건/FOMC/시장충격 중첩 여부를 계산합니다.
+6. `stats.py`: CLEAN 사건 표본으로 가설검정과 FDR 보정을 수행합니다.
+7. `plots.py` + `report.py` + `dashboard_app.py`: 차트·HTML 리포트·클릭 가능한 Streamlit 화면을 만듭니다.
+
+세부 파일 역할과 고도화 순서는 [`PROJECT_GUIDE_KO.md`](PROJECT_GUIDE_KO.md)를 참고하세요.
+
+### 시간 정렬 원칙
+
+| ET 게시 시점 | 일봉 이벤트 거래일 | 해석 품질 |
+| --- | --- | --- |
+| 거래일 09:30 이전 | 같은 거래일 | 장 시작 후 반응을 대체로 포함 |
+| 거래일 09:30~16:00 | 같은 거래일 | 게시 전 당일 움직임이 섞여 분봉 분석 권장 |
+| 거래일 16:00 이후 | 다음 거래일 | 다음 정규장 반응에 연결 |
+| 주말·휴장일 | 다음 거래일 | 다음 정규장 반응에 연결 |
+
+`posted_at`은 기존 코드 호환용 timezone-naive UTC이며, 의미가 명확한 `posted_at_utc`, `posted_at_et`, `market_session`, `event_date_rule`, `daily_alignment_quality`를 함께 저장합니다. 미국 조기폐장일은 현재 16:00 마감을 사용하므로 후속 버전에서 거래소 캘린더 기반으로 보완할 예정입니다.
+
+### 사건 clustering 원칙
+
+일봉 하나에 같은 캠페인의 게시물 여러 개가 연결되면 같은 가격 반응을 여러 번 세는 문제가 생깁니다. 기본 분석은 `person + ticker + topic + event_date`가 같고 첫 게시물로부터 6시간 이내인 글을 하나의 사건으로 묶습니다. 직전 글과의 간격이 아니라 첫 글을 기준으로 잡아 cluster가 연쇄적으로 며칠까지 늘어나는 것을 막습니다. `--no-cluster-posts`로 기존 게시물 단위 결과를 재현하거나 `--cluster-hours`로 민감도를 비교할 수 있습니다.
 
 ---
 
 ## Key Findings
 
-최종 CLEAN 표본(359건) 기준 H1~H6 가설검정 결과입니다. 
+아래 표는 시간대·clustering 수정 전 게시물 단위 CLEAN 표본(359건)에서 나온 역사적 baseline입니다. 새 6시간 사건 clustering 결과로 전체 파이프라인을 다시 실행한 뒤 수치를 교체해야 합니다.
 전체 판정 근거와 재해석 과정은 [`docs/final_report.md`](../docs/final_report.md) §6-2를 참고하세요.
 
 | 가설 | 내용 | 최종 판정 |
@@ -117,13 +144,14 @@ Track1(2023-01~2025-04, 통계적 가설검정)과 Track2(2025-06 결별·2025-1
 
 ```bash
 .
-├── market_mover/                  # 핵심 로직 패키지 (18개 모듈)
+├── market_mover/                  # 핵심 로직 패키지
 │   ├── config.py                  # 경로·기간·티커 등 전역 설정
 │   ├── load_posts.py              # SNS 게시물 로딩·정제
 │   ├── load_prices.py             # yfinance 가격 다운로드 + 캐시 폴백
 │   ├── preprocess.py              # market-relevant 필터링
 │   ├── topic_rules.py             # 키워드 기반 topic 분류·종목 매핑
 │   ├── event_windows.py           # 이벤트 정렬(Track1/Track2)
+│   ├── event_clustering.py        # 연속 게시물 6시간 사건 clustering
 │   ├── impact.py                  # robust z-score, impact_score
 │   ├── contamination.py           # 오염 분류(CLEAN/MINOR/MAJOR)
 │   ├── novelty.py / sentiment.py  # novelty score / 감성분석(선택)
@@ -186,6 +214,36 @@ PYTHONPATH=. .venv/bin/python run_daily_pipeline.py \
 ```bash
 PYTHONPATH=. .venv/bin/streamlit run dashboard_app.py
 ```
+
+Windows에서는 `run_streamlit.bat`을 실행하면 전용 가상환경과 대시보드 패키지를 확인하고, 새 `google-genai` SDK가 없을 때 자동으로 설치합니다. 화면 오른쪽 위 `AI 설정`에서 Gemini를 선택하고 API 키를 입력한 뒤 `실제 연결 테스트`를 눌러야 `연결됨`으로 표시됩니다. 기본 모델은 `gemini-3.6-flash`이며, 같은 설정이 원문 번역·사건 요약·데이터 질문에 공통으로 사용됩니다. 키나 모델을 바꾸면 이전 설정의 실패 결과 캐시는 재사용하지 않습니다.
+
+Streamlit 화면은 발표용 분석 과정과 분리된 서비스 UI입니다. `시장 반응 / 사건 찾기 / 데이터 질문`의 세 메뉴만 사용하며, 사용자가 전체 데이터 범위 안에서 현재 분석 기간을 바꿀 수 있습니다. 첫 화면의 큰 카드에는 전체 데이터 기간 대신 현재 분석 기간을 표시하고, 전체 범위는 기간 설정 영역에 별도로 안내합니다. 시장 반응 화면에는 종가 선 위에 사건 날짜를 점으로 표시하는 전체 폭 타임라인이 있습니다. 점을 누르면 선택 날짜·종가·사건 목록이 그래프 아래에 넓게 표시되고 상세 분석으로 이어집니다. 계기판과 일론 머스크·도널드 트럼프 캐릭터도 유지했습니다.
+
+타임라인에서 날짜 점을 선택하면 `이 날짜에서 자세히 볼 사건` 영역이 강조되어 나타납니다. 같은 날짜에 사건이 여러 건이면 반응 강도가 큰 순서로 선택할 수 있고, 현재 선택한 사건의 인물·주제·실제 등락률·시장 대비 등락률을 한 줄 미리보기로 먼저 확인할 수 있습니다.
+
+뉴스로 확인한 추가 사례도 같은 시장의 과거 SNS `CLEAN` 사건을 기준으로 계기판 위치를 계산합니다. Track2 뉴스·수동 사례는 SNS 문장 감성분석 대상이 아니므로 `감성 미적용`으로 표시합니다. 계기판에는 잘리지 않는 짧은 사건 미리보기만 두고, 전체 원문·설명은 아래 사건 상세에서 확인합니다.
+
+트럼프의 최신 게시물 조회는 X API를 사용하지 않습니다. 사용자가 버튼을 눌렀을 때 `trumpstruth.org/feed` 비공식 미러 RSS에서 목록을 받고, 각 링크를 Jina Reader로 읽어 본문을 추출합니다. 최근 24시간에 게시물이 없으면 3일·5일·7일 순으로 조회 범위를 넓힙니다. Musk는 무료로 안정적인 실시간 X 소스가 없어 화면의 실시간 조회 대상에서 제외합니다. 새 게시물은 아직 시장 반응이 확정되지 않았으므로 과거 분석 결과에 자동 합산하지 않습니다.
+
+요약과 번역은 화면 진입 시 자동 실행하지 않습니다. AI를 연결하지 않아도 기본 요약과 계산형 데이터 답변이 동작합니다. 영어 원문에는 `원문 한국어로 번역` 버튼이 표시되며, 이미 한국어인 뉴스 설명에는 중복 번역 버튼을 표시하지 않습니다. 한국어 번역은 AI 서비스를 연결하거나, 상단 `AI 설정`에서 기본 온라인 번역을 명시적으로 허용한 뒤 사용할 수 있습니다.
+
+AI provider는 화면 상단의 `AI 설정`에서 선택합니다.
+
+```bash
+# Gemini
+export GEMINI_API_KEY="..."
+
+# Groq
+export GROQ_API_KEY="..."
+
+# 로컬 Ollama
+ollama serve
+ollama pull qwen2.5:7b
+
+# 트럼프 최신 게시물 조회는 별도 API 키가 필요하지 않습니다.
+```
+
+API key가 없더라도 가격 차트·필터·집계·상위 사건 조회·기본 사건 요약은 동작합니다. 데이터 질문은 pandas가 먼저 계산하며, LLM 연결이 없으면 질문 유형별 계산형 답변으로 전환됩니다. 감성 카드를 표시하려면 파이프라인 실행 시 `--add-sentiment`를 포함해야 합니다.
 
 ### Topic 분류 검증
 
