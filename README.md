@@ -149,7 +149,7 @@ SNS 원본 범위(~2025-04-13) 밖의 사건을 Google News RSS로 자동 확장
 .venv/bin/python scripts/track2/refresh_track2_news.py
 ```
 
-Windows에서는 `run_news_sample.bat` → `run_news_full.bat` → `run_refresh_news_only.bat` 순서로 동일하게 동작합니다. 자세한 내용은 [`docs/NEWS_UPDATE_GUIDE_KO.txt`](docs/NEWS_UPDATE_GUIDE_KO.txt)를 참고하세요.
+Windows에서는 `scripts/track2/run_news_sample.bat` → `scripts/track2/run_news_full.bat` → `scripts/track2/run_refresh_news_only.bat` 순서로 동일하게 동작합니다. 자세한 내용은 [`docs/NEWS_UPDATE_GUIDE_KO.txt`](docs/NEWS_UPDATE_GUIDE_KO.txt)를 참고하세요.
 
 **감성분석 / novelty / placebo / RIVN 민감도 / Track2 LLM 내러티브 / twscrape 백필 / 장중 케이스 / 실시간 모니터링**처럼 자주 쓰지 않는 옵션은 [`docs/ADVANCED_USAGE.md`](docs/ADVANCED_USAGE.md)에 따로 정리했습니다.
 
@@ -310,18 +310,18 @@ Track2(SNS 원본 범위 밖) 사건 6건 — 2025-06 결별, 2025-10 관세 발
 ├── dashboard_app.py               # Streamlit 대시보드(시장 반응 / 사건 찾기 / 데이터 질문)
 ├── live_monitor.py                # 실시간 게시물 필터
 ├── run_streamlit.sh / .bat        # 대시보드 실행 스크립트(macOS·Linux / Windows)
-├── run_news_*.bat                 # Windows용 뉴스 파이프라인 실행 스크립트(scripts/track2/를 호출)
 ├── scripts/
 │   ├── track1/
 │   │   └── audit_topics.py             # topic 분류 정확도 검증
-│   └── track2/                         # Track2(SNS 원본 범위 밖) 전용 도구
+│   └── track2/                         # Track2(SNS 원본 범위 밖) 전용 도구 + Windows 런처
 │       ├── find_track2_news_candidates.py    # 뉴스 후보 탐색(수동 큐레이션용)
 │       ├── collect_track2_news.py            # 뉴스 대량 수집(Google News RSS)
 │       ├── build_track2_news_events.py       # 수집된 기사를 뉴스 사건 단위로 클러스터링
 │       ├── ensure_news_price_range.py        # 뉴스 사건 기간까지 가격 데이터 범위 보정
 │       ├── refresh_track2_news.py            # SNS 결과 유지한 채 뉴스 사건만 갱신
 │       ├── backfill_track2_musk_twscrape.py  # Musk 게시물 보조 수집(선택)
-│       └── run_intraday_case_study.py        # 분봉 케이스 스터디
+│       ├── run_intraday_case_study.py        # 분봉 케이스 스터디
+│       └── run_news_*.bat / run_fix_news_dates.bat  # 위 스크립트들의 Windows 런처
 ├── docs/                          # 가이드·검증·진행 기록 문서 (아래 Documentation 참고)
 ├── data/
 │   ├── raw/                       # 원본 CSV (직접 채워야 함, git에는 미포함)

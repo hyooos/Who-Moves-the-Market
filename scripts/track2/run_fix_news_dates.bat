@@ -1,7 +1,7 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-set "PY=.venv\Scripts\python.exe"
+set "PY=..\..\.venv\Scripts\python.exe"
 
 if not exist "%PY%" (
   echo ERROR: Python virtual environment not found: %PY%
@@ -10,15 +10,15 @@ if not exist "%PY%" (
 )
 
 echo [1/2] Checking and extending market-price range to 2025-10-23
-"%PY%" scripts\track2\ensure_news_price_range.py
+"%PY%" ensure_news_price_range.py
 if errorlevel 1 goto error
 
 echo [2/2] Re-attaching news events to trading dates
-"%PY%" scripts\track2\refresh_track2_news.py
+"%PY%" refresh_track2_news.py
 if errorlevel 1 goto error
 
 echo.
-echo DONE. Now run run_streamlit.bat.
+echo DONE. Now run run_streamlit.bat from the repository root.
 pause
 exit /b 0
 
