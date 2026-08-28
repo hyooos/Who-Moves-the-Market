@@ -7,13 +7,13 @@
 예시
 ----
 # 한 달 샘플 테스트
-python collect_track2_news.py --start 2025-06-01 --end 2025-06-30 --source google
+python scripts/track2/collect_track2_news.py --start 2025-06-01 --end 2025-06-30 --source google
 
 # 전체 기간 수집 (권장: 먼저 샘플 테스트 후 실행)
-python collect_track2_news.py --start 2023-01-03 --end 2025-10-23 --source google
+python scripts/track2/collect_track2_news.py --start 2023-01-03 --end 2025-10-23 --source google
 
 # GDELT까지 같이 시도
-python collect_track2_news.py --start 2023-01-03 --end 2025-10-23 --source both
+python scripts/track2/collect_track2_news.py --start 2023-01-03 --end 2025-10-23 --source both
 
 수집 결과
 ---------
@@ -35,6 +35,13 @@ from urllib.parse import quote
 
 import pandas as pd
 import requests
+
+import sys as _sys
+from pathlib import Path as _Path
+
+_REPO_ROOT = _Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in _sys.path:
+    _sys.path.insert(0, str(_REPO_ROOT))
 
 from market_mover import config
 from market_mover.topic_rules import assign_topic, map_ticker

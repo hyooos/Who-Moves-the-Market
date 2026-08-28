@@ -10,11 +10,11 @@ if not exist "%PY%" (
 )
 
 echo [1/2] Checking and extending market-price range to 2025-10-23
-"%PY%" ensure_news_price_range.py
+"%PY%" scripts\track2\ensure_news_price_range.py
 if errorlevel 1 goto error
 
 echo [2/2] Re-attaching news events to trading dates
-"%PY%" refresh_track2_news.py
+"%PY%" scripts\track2\refresh_track2_news.py
 if errorlevel 1 goto error
 
 echo.

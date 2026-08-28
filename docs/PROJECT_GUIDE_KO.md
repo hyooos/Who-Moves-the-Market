@@ -17,10 +17,10 @@
 | `run_daily_pipeline.py` | 전체 일봉 분석의 메인 진입점. 아래 모듈을 순서대로 호출하고 CSV·통계·차트·리포트를 저장 | 예 |
 | `dashboard_app.py` | 최종 CSV와 통계 결과를 읽어 Streamlit 화면 구성. 차트 클릭, 원문/기사, 번역·LLM 분석, Ask the Data 제공 | 예 |
 | `live_monitor.py` | 최신 Trump RSS를 읽어 topic/ticker 관심 알림 생성. 아직 가격 반응이 끝나지 않았으므로 영향 점수는 예측하지 않음 | 필요할 때 |
-| `run_intraday_case_study.py` | 선택 사건의 분봉 가격을 분석 | 필요할 때 |
-| `audit_topics.py` | 사람이 직접 라벨링한 표본과 규칙 기반 topic 분류를 비교 | 검증할 때 |
-| `find_track2_news_candidates.py` | 2025-04 이후 Track2에 넣을 뉴스 후보 탐색 | Track2 갱신 시 |
-| `backfill_track2_musk_twscrape.py` | Track2 Musk 게시물을 보완하는 보조 수집 스크립트 | 선택 |
+| `scripts/track2/run_intraday_case_study.py` | 선택 사건의 분봉 가격을 분석 | 필요할 때 |
+| `scripts/track1/audit_topics.py` | 사람이 직접 라벨링한 표본과 규칙 기반 topic 분류를 비교 | 검증할 때 |
+| `scripts/track2/find_track2_news_candidates.py` | 2025-04 이후 Track2에 넣을 뉴스 후보 탐색 | Track2 갱신 시 |
+| `scripts/track2/backfill_track2_musk_twscrape.py` | Track2 Musk 게시물을 보완하는 보조 수집 스크립트 | 선택 |
 
 | 모듈 | 핵심 책임 |
 | --- | --- |

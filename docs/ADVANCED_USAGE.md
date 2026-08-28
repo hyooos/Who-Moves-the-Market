@@ -102,7 +102,7 @@ export GEMINI_API_KEY="본인_API_키"
 ```bash
 .venv/bin/pip install -r requirements-optional.txt
 export TWSCRAPE_USERNAME="계정" TWSCRAPE_PASSWORD="비밀번호" TWSCRAPE_EMAIL="이메일"
-.venv/bin/python backfill_track2_musk_twscrape.py
+.venv/bin/python scripts/track2/backfill_track2_musk_twscrape.py
 ```
 
 결과는 `data/manual/track2_musk_backfill_candidates.csv`에 저장되는 "후보 목록"이며, 실제 채택할 사건만 확인해서 `track2_curated_events.csv`로 옮깁니다.
@@ -110,7 +110,7 @@ export TWSCRAPE_USERNAME="계정" TWSCRAPE_PASSWORD="비밀번호" TWSCRAPE_EMAI
 ## 장중 케이스 스터디
 
 ```bash
-.venv/bin/python run_intraday_case_study.py \
+.venv/bin/python scripts/track2/run_intraday_case_study.py \
   --event-id tk1_000001 \
   --intraday-csv data/manual/example_intraday.csv
 ```

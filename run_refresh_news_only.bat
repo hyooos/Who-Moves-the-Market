@@ -10,7 +10,7 @@ if not exist "%PY%" (
 )
 
 echo Refreshing already-collected news events only...
-"%PY%" refresh_track2_news.py
+"%PY%" scripts\track2\refresh_track2_news.py
 if errorlevel 1 goto error
 
 echo.

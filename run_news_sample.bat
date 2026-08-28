@@ -10,19 +10,19 @@ if not exist "%PY%" (
 )
 
 echo [1/4] Collecting sample news: 2025-06-01 to 2025-06-30
-"%PY%" collect_track2_news.py --start 2025-06-01 --end 2025-06-30 --source google --window-days 15
+"%PY%" scripts\track2\collect_track2_news.py --start 2025-06-01 --end 2025-06-30 --source google --window-days 15
 if errorlevel 1 goto error
 
 echo [2/4] Building news events
-"%PY%" build_track2_news_events.py
+"%PY%" scripts\track2\build_track2_news_events.py
 if errorlevel 1 goto error
 
 echo [3/4] Ensuring market-price coverage through 2025-10-23
-"%PY%" ensure_news_price_range.py
+"%PY%" scripts\track2\ensure_news_price_range.py
 if errorlevel 1 goto error
 
 echo [4/4] Merging news events into existing SNS results
-"%PY%" refresh_track2_news.py
+"%PY%" scripts\track2\refresh_track2_news.py
 if errorlevel 1 goto error
 
 echo.

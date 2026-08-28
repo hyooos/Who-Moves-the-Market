@@ -81,7 +81,7 @@ Track2(수동 큐레이션) 사건: 6건 (이미 data/manual/track2_curated_even
 | Placebo 순열검정(200회) | `--run-placebo` | 미실행 |
 | RIVN peer 민감도 분석 | `--run-rivn-sensitivity` | 미실행 |
 | Track2 LLM 내러티브 생성 | `--build-narratives --llm-provider ...` | 미실행 (narrative 컬럼은 비어 있음) |
-| topic 분류 정확도 검증 | `audit_topics.py --evaluate` | **표본은 이미 채워져 있음**(`data/manual/topic_audit_sample.csv` 50건 `manual_topic` 전부 기입됨), `--evaluate`만 실행하면 바로 정확도가 나옴 |
+| topic 분류 정확도 검증 | `scripts/track1/audit_topics.py --evaluate` | **표본은 이미 채워져 있음**(`data/manual/topic_audit_sample.csv` 50건 `manual_topic` 전부 기입됨), `--evaluate`만 실행하면 바로 정확도가 나옴 |
 
 ---
 
@@ -102,7 +102,7 @@ Track2(수동 큐레이션) 사건: 6건 (이미 data/manual/track2_curated_even
 우선순위 순서로 정리:
 
 1. **`dashboard-period-fixes` → `yejin-update` 병합 여부 결정** — 지금은 별도 브랜치로만 올라가 있고 PR #1은 merge됐다가 revert된 상태(§5). 검토 후 다시 merge할지 결정 필요.
-2. **`audit_topics.py --evaluate` 실행** — 표본(50건)이 이미 채워져 있어서 바로 실행 가능. topic 분류(키워드 룰) 정확도를 수치로 확인할 수 있음.
+2. **`scripts/track1/audit_topics.py --evaluate` 실행** — 표본(50건)이 이미 채워져 있어서 바로 실행 가능. topic 분류(키워드 룰) 정확도를 수치로 확인할 수 있음.
 3. **Placebo 검정 + RIVN 민감도 실행** — `run_daily_pipeline.py --run-placebo --run-rivn-sensitivity`. §2.3의 ticker 교란 발견이 우연이 아니라는 걸 순열검정으로 한 번 더 방어하려면 필요.
 4. **Track2 LLM 내러티브 생성** — Ollama(로컬, 무료) 또는 Gemini/Groq API 키로 `--build-narratives` 실행하면 케이스 스터디 탭에 근거 기반 설명이 채워짐.
 5. **감성분석·novelty 추가** — `--add-sentiment --add-novelty`. 지금은 표본 0건이라 관련 exploratory 검정이 전부 생략된 상태.

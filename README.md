@@ -28,8 +28,8 @@ Track1(2023-01~2025-04, 통계적 가설검정)과 Track2(2025-06 결별·2025-1
 - H1~H6 가설검정(Wilcoxon/Kruskal-Wallis/Mann-Whitney/Spearman) + Benjamini-Hochberg FDR 보정
 - Placebo 순열검정(200회) + RIVN peer 민감도 분석으로 방법론 자체 검증
 - ticker 교란 통제 보조검정 + η² 효과크기 분해로 "진짜 원인" 재검증
-- topic 분류 정확도 직접 라벨링·평가(`audit_topics.py`) — 키워드 룰 기반 분류의 한계를 수치로 공개
-- **Track2 뉴스 자동 수집 파이프라인**: Google News RSS로 기사를 대량 수집하고(`collect_track2_news.py`) 사건 단위로 클러스터링(`build_track2_news_events.py`)해 SNS 원본 범위 밖 사건까지 자동으로 확장
+- topic 분류 정확도 직접 라벨링·평가(`scripts/track1/audit_topics.py`) — 키워드 룰 기반 분류의 한계를 수치로 공개
+- **Track2 뉴스 자동 수집 파이프라인**: Google News RSS로 기사를 대량 수집하고(`scripts/track2/collect_track2_news.py`) 사건 단위로 클러스터링(`scripts/track2/build_track2_news_events.py`)해 SNS 원본 범위 밖 사건까지 자동으로 확장
 - Track2 케이스 스터디: 로컬 LLM(Ollama+Qwen2.5:7b)으로 사실 기반 내러티브 생성 + 사람 검수 레이어
 - **Streamlit 대시보드**(`시장 반응 / 사건 찾기 / 데이터 질문` 3메뉴): 반응강도 게이지, 머스크·트럼프 캐릭터, 감성 표시, 사건 검색, 데이터 질문. 사용자가 전체 데이터 범위 안에서 분석 기간을 직접 선택
 - **Gemini 3.6 Flash** 등 AI 연결: 공식 `google-genai` SDK 기반 원문 번역·사건 요약·데이터 질문 + 실제 호출로 확인하는 연결 테스트(키 입력 ≠ 연결 성공을 구분해서 표시)
@@ -139,14 +139,14 @@ SNS 원본 범위(~2025-04-13) 밖의 사건을 Google News RSS로 자동 확장
 
 ```bash
 # 한 달치 샘플로 먼저 확인
-.venv/bin/python collect_track2_news.py --start 2025-06-01 --end 2025-06-30 --source google --window-days 15
-.venv/bin/python build_track2_news_events.py
+.venv/bin/python scripts/track2/collect_track2_news.py --start 2025-06-01 --end 2025-06-30 --source google --window-days 15
+.venv/bin/python scripts/track2/build_track2_news_events.py
 
 # 문제 없으면 전체 기간 수집 + 반영
-.venv/bin/python collect_track2_news.py --start 2023-01-03 --end 2025-10-23 --source google --window-days 15
-.venv/bin/python build_track2_news_events.py
-.venv/bin/python ensure_news_price_range.py
-.venv/bin/python refresh_track2_news.py
+.venv/bin/python scripts/track2/collect_track2_news.py --start 2023-01-03 --end 2025-10-23 --source google --window-days 15
+.venv/bin/python scripts/track2/build_track2_news_events.py
+.venv/bin/python scripts/track2/ensure_news_price_range.py
+.venv/bin/python scripts/track2/refresh_track2_news.py
 ```
 
 Windows에서는 `run_news_sample.bat` → `run_news_full.bat` → `run_refresh_news_only.bat` 순서로 동일하게 동작합니다. 자세한 내용은 [`docs/NEWS_UPDATE_GUIDE_KO.txt`](docs/NEWS_UPDATE_GUIDE_KO.txt)를 참고하세요.
@@ -177,10 +177,10 @@ G --> H["대시보드·리포트\ndashboard_app.py"]
 **Track2 뉴스 자동 파이프라인**(SNS 원본 범위 밖 사건 확장)은 별도 흐름으로 동작합니다:
 
 ```
-collect_track2_news.py (Google News RSS 기사 수집)
-  → build_track2_news_events.py (기사 → 뉴스 사건 클러스터링)
-  → ensure_news_price_range.py (필요 시 가격 데이터 기간 보정)
-  → refresh_track2_news.py (SNS 결과는 유지한 채 뉴스 사건만 대시보드 데이터에 반영)
+scripts/track2/collect_track2_news.py (Google News RSS 기사 수집)
+  → scripts/track2/build_track2_news_events.py (기사 → 뉴스 사건 클러스터링)
+  → scripts/track2/ensure_news_price_range.py (필요 시 가격 데이터 기간 보정)
+  → scripts/track2/refresh_track2_news.py (SNS 결과는 유지한 채 뉴스 사건만 대시보드 데이터에 반영)
 ```
 
 세부 파일 역할과 고도화 순서는 [`docs/PROJECT_GUIDE_KO.md`](docs/PROJECT_GUIDE_KO.md)를 참고하세요.
@@ -279,7 +279,7 @@ Track2(SNS 원본 범위 밖) 사건 6건 — 2025-06 결별, 2025-10 관세 발
 ## Current Limitations
 
 - 발언과 시장 반응의 시간적 연관성은 인과관계 증명이 아닙니다 — CLEAN 분류는 "다른 요인과 안 섞였다"는 뜻이지 "이 발언 때문"이라는 뜻이 아닙니다.
-- 일봉 해상도 기반이라 장중 정밀 타이밍 분석(H5)은 판단을 보류했습니다. 분봉 케이스 스터디는 `run_intraday_case_study.py`로 선택 실행할 수 있습니다.
+- 일봉 해상도 기반이라 장중 정밀 타이밍 분석(H5)은 판단을 보류했습니다. 분봉 케이스 스터디는 `scripts/track2/run_intraday_case_study.py`로 선택 실행할 수 있습니다.
 - 미국 조기폐장일은 현재 16:00 마감 기준을 그대로 적용합니다(거래소 캘린더 미반영).
 - Musk는 무료로 안정적인 실시간 X 소스가 없어 대시보드 실시간 조회 대상에서 제외했습니다.
 - Track2 뉴스 자동 수집은 Google News 검색 인덱스 기반이라 "전 세계 모든 기사 완전 수집"을 보장하지 않습니다.
@@ -307,18 +307,21 @@ Track2(SNS 원본 범위 밖) 사건 6건 — 2025-06 결별, 2025-10 관세 발
 │   ├── plots.py / report.py       # Plotly 차트 / HTML 리포트
 │   └── dashboard_data.py / dashboard_widgets.py  # 대시보드 로더·게이지
 ├── run_daily_pipeline.py          # 메인 실행 파일(Track1 이벤트 스터디)
-├── audit_topics.py                # topic 분류 정확도 검증
-├── live_monitor.py                # 실시간 게시물 필터
-├── find_track2_news_candidates.py # Track2 뉴스 후보 탐색(수동 큐레이션용)
-├── collect_track2_news.py         # Track2 뉴스 대량 수집(Google News RSS)
-├── build_track2_news_events.py    # 수집된 기사를 뉴스 사건 단위로 클러스터링
-├── refresh_track2_news.py         # SNS 결과 유지한 채 뉴스 사건만 갱신
-├── ensure_news_price_range.py     # 뉴스 사건 기간까지 가격 데이터 범위 보정
-├── backfill_track2_musk_twscrape.py # Track2 Musk 게시물 보조 수집(선택)
-├── run_intraday_case_study.py     # 분봉 케이스 스터디
 ├── dashboard_app.py               # Streamlit 대시보드(시장 반응 / 사건 찾기 / 데이터 질문)
+├── live_monitor.py                # 실시간 게시물 필터
 ├── run_streamlit.sh / .bat        # 대시보드 실행 스크립트(macOS·Linux / Windows)
-├── run_news_*.bat                 # Windows용 뉴스 파이프라인 실행 스크립트
+├── run_news_*.bat                 # Windows용 뉴스 파이프라인 실행 스크립트(scripts/track2/를 호출)
+├── scripts/
+│   ├── track1/
+│   │   └── audit_topics.py             # topic 분류 정확도 검증
+│   └── track2/                         # Track2(SNS 원본 범위 밖) 전용 도구
+│       ├── find_track2_news_candidates.py    # 뉴스 후보 탐색(수동 큐레이션용)
+│       ├── collect_track2_news.py            # 뉴스 대량 수집(Google News RSS)
+│       ├── build_track2_news_events.py       # 수집된 기사를 뉴스 사건 단위로 클러스터링
+│       ├── ensure_news_price_range.py        # 뉴스 사건 기간까지 가격 데이터 범위 보정
+│       ├── refresh_track2_news.py            # SNS 결과 유지한 채 뉴스 사건만 갱신
+│       ├── backfill_track2_musk_twscrape.py  # Musk 게시물 보조 수집(선택)
+│       └── run_intraday_case_study.py        # 분봉 케이스 스터디
 ├── docs/                          # 가이드·검증·진행 기록 문서 (아래 Documentation 참고)
 ├── data/
 │   ├── raw/                       # 원본 CSV (직접 채워야 함, git에는 미포함)

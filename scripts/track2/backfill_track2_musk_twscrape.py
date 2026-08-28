@@ -5,6 +5,13 @@ from pathlib import Path
 
 import pandas as pd
 
+import sys as _sys
+from pathlib import Path as _Path
+
+_REPO_ROOT = _Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in _sys.path:
+    _sys.path.insert(0, str(_REPO_ROOT))
+
 from market_mover import config
 from market_mover.load_posts import clean_text
 from market_mover.topic_rules import assign_topic, is_market_relevant, map_ticker

@@ -38,4 +38,4 @@ data/processed/events_scored.csv
 - 뉴스에는 sentiment 컬럼을 의도적으로 비워둠.
 - full 수집은 Google News 요청 수가 많아 시간이 걸릴 수 있음.
 - Google News는 검색 인덱스 기반이므로 '전 세계 모든 기사 완전수집'을 보장하는 데이터베이스는 아님.
-- 더 많은 원천이 필요하면 collect_track2_news.py에 --source both를 써서 GDELT도 병합할 수 있으나, 네트워크에 따라 GDELT 429가 날 수 있음.
+- 더 많은 원천이 필요하면 scripts/track2/collect_track2_news.py에 --source both를 써서 GDELT도 병합할 수 있으나, 네트워크에 따라 GDELT 429가 날 수 있음.

@@ -9,6 +9,13 @@ from __future__ import annotations
 
 import pandas as pd
 
+import sys as _sys
+from pathlib import Path as _Path
+
+_REPO_ROOT = _Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in _sys.path:
+    _sys.path.insert(0, str(_REPO_ROOT))
+
 from market_mover import config
 from market_mover.impact import compute_price_features
 from market_mover.load_prices import download_daily_prices

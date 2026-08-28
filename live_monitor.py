@@ -185,7 +185,7 @@ def main():
     else:
         print(
             "Musk용 무료 실시간 RSS 소스가 아직 없습니다(X가 무료 API를 막아둠). "
-            "twscrape 등 비공식 도구가 필요하거나(backfill_track2_musk_twscrape.py 참고), "
+            "twscrape 등 비공식 도구가 필요하거나(scripts/track2/backfill_track2_musk_twscrape.py 참고), "
             "--paste로 텍스트를 직접 넣어 분류 로직만 테스트할 수 있습니다."
         )
 

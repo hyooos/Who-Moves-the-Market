@@ -2,6 +2,13 @@ import argparse
 
 import pandas as pd
 
+import sys as _sys
+from pathlib import Path as _Path
+
+_REPO_ROOT = _Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in _sys.path:
+    _sys.path.insert(0, str(_REPO_ROOT))
+
 from market_mover import config
 from market_mover.event_windows import build_intraday_window
 from market_mover.load_prices import load_intraday_prices

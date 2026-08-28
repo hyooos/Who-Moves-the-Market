@@ -74,7 +74,7 @@ data/
 | `outputs/tables/placebo_results.csv`, `placebo_summary.json` | placebo(무작위 날짜) 순열검정 200회 결과 |
 | `outputs/tables/rivn_sensitivity.csv` | TSLA peer에 RIVN 포함/제외 민감도 비교 |
 | `outputs/tables/filtering_summary.csv` | 인물별 원본 게시물 수 대비 필터링 비율 |
-| `outputs/tables/track2_news_candidates.csv` | `find_track2_news_candidates.py`가 찾은 Track 2 후보 사건 + 관련 뉴스 목록 |
+| `outputs/tables/track2_news_candidates.csv` | `scripts/track2/find_track2_news_candidates.py`가 찾은 Track 2 후보 사건 + 관련 뉴스 목록 |
 | `outputs/figures/*.html` | Plotly 인터랙티브 차트 4종 |
 | `outputs/reports/market_mover_report.html` | 정적 HTML 최종 리포트 |
 
