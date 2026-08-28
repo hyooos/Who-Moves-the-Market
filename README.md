@@ -1,7 +1,11 @@
 # 📈 Who Moves the Market?
 
-### 누가 시장을 움직이는가? : 트럼프, 일론머스크 SNS 데이터 기반 주가 반응 분석
-> 도널드 트럼프와 일론 머스크의 트위터 게시물과 금융시장 데이터를 같은 시간축에 놓고 어떤 게시물 전후에 가격·거래량·변동성이 평소보다 크게 반응했는지 분석하는 프로젝트
+### 누가 시장을 움직이는가? : 트럼프·일론 머스크 SNS 게시물 기반 주가 반응 분석
+> 도널드 트럼프와 일론 머스크의 SNS 게시물(Truth Social/X)과 실제 금융시장 데이터를 같은 시간축 위에 올려놓고, 어떤 게시물 직후에 가격·거래량·변동성이 평소보다 이례적으로 반응했는지를 통계적으로 검증하는 프로젝트입니다. 미래 주가를 예측하지 않고, "이미 일어난 반응이 우연이 아니라고 방어할 수 있는가"를 목표로 합니다.
+
+[![Demo Video](https://img.youtube.com/vi/0LQo-9-9-8Y/maxresdefault.jpg)](https://youtu.be/0LQo-9-9-8Y)
+
+🎥 **시연 영상**: [youtu.be/0LQo-9-9-8Y](https://youtu.be/0LQo-9-9-8Y) — 위 썸네일을 클릭하면 재생됩니다.
 
 ---
 
@@ -9,7 +13,7 @@
 
 본 프로젝트는 Trump·Musk의 SNS 게시물(Truth Social/X)과 TSLA·QQQ·SPY 등 종목·지수의 일봉 가격 데이터를 결합해, **robust z-score 기반 이벤트 스터디**로 "게시물 직후 시장이 이례적으로 반응했는가"를 검증합니다.
 
-Track1(2023-01~2025-04, 통계적 가설검정)과 Track2(2025-06 결별·2025-10 관세 등 캐글 범위 밖 개별 사건 케이스 스터디)를 이원 구조로 병행하며, placebo 순열검정·FDR 다중검정 보정·ticker 교란 통제 보조검정까지 코드 레벨에서 방법론을 스스로 검증하도록 설계했습니다. 검증 과정에서 발견한 두 개의 핵심 버그(SPY 자기 자신을 시장 벤치마크로 쓴 오류, topic 키워드 단어 경계 누락)를 직접 고치고 그 전후 결과를 투명하게 공개하는 것도 이 프로젝트의 일부입니다.
+Track1(2023-01~2025-04, 통계적 가설검정)과 Track2(2025-06 결별·2025-10 관세 등 Kaggle 원본 범위 밖 개별 사건 케이스 스터디)를 이원 구조로 병행합니다. Track2는 사람이 고른 대표 사건뿐 아니라, Google News RSS를 기반으로 한 **자동 뉴스 수집·클러스터링 파이프라인**으로도 확장됩니다. placebo 순열검정·FDR 다중검정 보정·ticker 교란 통제 보조검정까지 코드 레벨에서 방법론을 스스로 검증하도록 설계했고, 검증 과정에서 발견한 핵심 버그(SPY 자기 자신을 시장 벤치마크로 쓴 오류, topic 키워드 단어 경계 누락)를 직접 고치고 그 전후 결과를 투명하게 공개하는 것도 이 프로젝트의 일부입니다.
 
 ---
 
@@ -18,17 +22,18 @@ Track1(2023-01~2025-04, 통계적 가설검정)과 Track2(2025-06 결별·2025-1
 - Trump(Truth Social)·Musk(X) SNS 게시물 12만 건+ 정제 및 topic 룰베이스 분류
 - Robust z-score(median/MAD) 기반 이벤트 스터디, 2-pass baseline(CLEAN 이벤트 날짜 제외)
 - 다중게시·매크로(FOMC)·시장충격 3중 오염 분류 → CLEAN 표본만 정식 가설검정
+- 같은 화자·ticker·topic·반응 거래일의 연속 게시물을 첫 글 기준 6시간 고정 창으로 묶어 pseudo-replication 방지(`event_clustering.py`)
 - H1~H6 가설검정(Wilcoxon/Kruskal-Wallis/Mann-Whitney/Spearman) + Benjamini-Hochberg FDR 보정
 - Placebo 순열검정(200회) + RIVN peer 민감도 분석으로 방법론 자체 검증
 - ticker 교란 통제 보조검정 + η² 효과크기 분해로 "진짜 원인" 재검증
 - topic 분류 정확도 직접 라벨링·평가(`audit_topics.py`) — 키워드 룰 기반 분류의 한계를 수치로 공개
+- **Track2 뉴스 자동 수집 파이프라인**: Google News RSS로 기사를 대량 수집하고(`collect_track2_news.py`) 사건 단위로 클러스터링(`build_track2_news_events.py`)해 SNS 원본 범위 밖 사건까지 자동으로 확장
 - Track2 케이스 스터디: 로컬 LLM(Ollama+Qwen2.5:7b)으로 사실 기반 내러티브 생성 + 사람 검수 레이어
-- Streamlit 서비스: 반응강도 게이지, 머스크·트럼프 캐릭터, 감성 표시, 사건 검색, 데이터 질문
-- Gemini 3.6 Flash: 공식 `google-genai` SDK를 사용한 원문 번역·사건 요약·데이터 질문과 실제 연결 테스트
-- 실시간 게시물 필터(`live_monitor.py`) — 가격 예측이 아닌 규칙 기반 관심 알림
+- **Streamlit 대시보드**(`시장 반응 / 사건 찾기 / 데이터 질문` 3메뉴): 반응강도 게이지, 머스크·트럼프 캐릭터, 감성 표시, 사건 검색, 데이터 질문. 사용자가 전체 데이터 범위 안에서 분석 기간을 직접 선택
+- **Gemini 3.6 Flash** 등 AI 연결: 공식 `google-genai` SDK 기반 원문 번역·사건 요약·데이터 질문 + 실제 호출로 확인하는 연결 테스트(키 입력 ≠ 연결 성공을 구분해서 표시)
+- 실시간 게시물 필터(`live_monitor.py`) — 가격 예측이 아닌 규칙 기반 관심 알림. Trump 최신 게시물은 비공식 Truth Social 미러 RSS + Jina Reader로 조회(별도 API 키 불필요)
 - UTC 원본 시각 보존 → 미국 동부시간(ET) 변환 → 장 마감 후/휴장일은 다음 실제 거래일로 정렬
 - 원본 게시물 ID·URL을 최종 이벤트까지 보존해 대시보드에서 원문으로 바로 이동
-- 같은 화자·ticker·topic·반응 거래일의 연속 게시물을 첫 글 기준 6시간 고정 창으로 묶어 pseudo-replication 방지
 
 ---
 
@@ -61,14 +66,16 @@ Track1(2023-01~2025-04, 통계적 가설검정)과 Track2(2025-06 결별·2025-1
   <img src="https://img.shields.io/badge/Twitter--RoBERTa-1DA1F2?style=flat-square" height="28"/>
   <img src="https://img.shields.io/badge/Ollama-000000?style=flat-square" height="28"/>
   <img src="https://img.shields.io/badge/Qwen2.5-6A1B9A?style=flat-square" height="28"/>
+  <img src="https://img.shields.io/badge/Gemini%203.6%20Flash-8E75B2?style=flat-square&logo=googlegemini&logoColor=white" height="28"/>
 </p>
 
 ---
 
-#### Market Data & Statistics
+#### Market & News Data
 
 <p>
   <img src="https://img.shields.io/badge/yfinance-8A2BE2?style=flat-square" height="28"/>
+  <img src="https://img.shields.io/badge/Google%20News%20RSS-4285F4?style=flat-square&logo=googlenews&logoColor=white" height="28"/>
   <img src="https://img.shields.io/badge/Robust%20Z--Score-1E88E5?style=flat-square" height="28"/>
   <img src="https://img.shields.io/badge/FDR%20(Benjamini--Hochberg)-43A047?style=flat-square" height="28"/>
   <img src="https://img.shields.io/badge/Placebo%20Test-5E35B1?style=flat-square" height="28"/>
@@ -96,7 +103,16 @@ Track1(2023-01~2025-04, 통계적 가설검정)과 Track2(2025-06 결별·2025-1
 6. `stats.py`: CLEAN 사건 표본으로 가설검정과 FDR 보정을 수행합니다.
 7. `plots.py` + `report.py` + `dashboard_app.py`: 차트·HTML 리포트·클릭 가능한 Streamlit 화면을 만듭니다.
 
-세부 파일 역할과 고도화 순서는 [`PROJECT_GUIDE_KO.md`](PROJECT_GUIDE_KO.md)를 참고하세요.
+**Track2 뉴스 자동 파이프라인**(SNS 원본 범위 밖 사건 확장)은 별도 흐름으로 동작합니다:
+
+```
+collect_track2_news.py (Google News RSS 기사 수집)
+  → build_track2_news_events.py (기사 → 뉴스 사건 클러스터링)
+  → ensure_news_price_range.py (필요 시 가격 데이터 기간 보정)
+  → refresh_track2_news.py (SNS 결과는 유지한 채 뉴스 사건만 대시보드 데이터에 반영)
+```
+
+세부 파일 역할과 고도화 순서는 [`docs/PROJECT_GUIDE_KO.md`](docs/PROJECT_GUIDE_KO.md), 실행부터 검증까지 전체 진행 기록은 [`docs/implementation_status.md`](docs/implementation_status.md)를 참고하세요.
 
 ### 시간 정렬 원칙
 
@@ -117,8 +133,7 @@ Track1(2023-01~2025-04, 통계적 가설검정)과 Track2(2025-06 결별·2025-1
 
 ## Key Findings
 
-아래 표는 시간대·clustering 수정 전 게시물 단위 CLEAN 표본(359건)에서 나온 역사적 baseline입니다. 새 6시간 사건 clustering 결과로 전체 파이프라인을 다시 실행한 뒤 수치를 교체해야 합니다.
-전체 판정 근거와 재해석 과정은 [`docs/final_report.md`](../docs/final_report.md) §6-2를 참고하세요.
+아래 표는 시간대·clustering 수정 전 게시물 단위 CLEAN 표본(359건)에서 나온 역사적 baseline입니다.
 
 | 가설 | 내용 | 최종 판정 |
 | --- | --- | --- |
@@ -137,6 +152,8 @@ Track1(2023-01~2025-04, 통계적 가설검정)과 Track2(2025-06 결별·2025-1
 - 자체 topic 분류 정확도를 직접 라벨링해 검증 — 전체 정확도 56%, Musk 쪽 topic(precision 100%) vs Trump 쪽 topic(precision 0~40%대)의 격차를 수치로 공개
 - 다중게시를 "신호"로 볼지 "오염"으로 볼지 두 관점을 직접 실험 — 신호 관점은 pseudo-replication(같은 날짜 관측치 최대 42회 중복)으로 허위 유의성을 양산함을 확인
 - Track2 케이스 스터디에서 2025-10-10 관세 발표가 확장 기간 전체 최대 반응(SPY z=-5.49)으로 확인됨
+
+방법론 검증 과정과 재해석의 전체 기록은 [`docs/implementation_status.md`](docs/implementation_status.md)에서 확인할 수 있습니다.
 
 ---
 
@@ -157,23 +174,40 @@ Track1(2023-01~2025-04, 통계적 가설검정)과 Track2(2025-06 결별·2025-1
 │   ├── novelty.py / sentiment.py  # novelty score / 감성분석(선택)
 │   ├── stats.py                   # H1~H6 통계검정 + FDR 보정
 │   ├── placebo.py / sensitivity.py# 순열검정 / RIVN 민감도
-│   ├── case_narratives.py         # Track2 LLM 내러티브(Ollama+Qwen2.5:7b)
+│   ├── case_narratives.py         # Track2 LLM 내러티브·번역·데이터 질문(Gemini/Groq/Ollama)
 │   ├── plots.py / report.py       # Plotly 차트 / HTML 리포트
 │   └── dashboard_data.py / dashboard_widgets.py  # 대시보드 로더·게이지
-├── run_daily_pipeline.py          # 메인 실행 파일
+├── run_daily_pipeline.py          # 메인 실행 파일(Track1 이벤트 스터디)
 ├── audit_topics.py                # topic 분류 정확도 검증
 ├── live_monitor.py                # 실시간 게시물 필터
-├── find_track2_news_candidates.py # Track2 뉴스 발견 도구
+├── find_track2_news_candidates.py # Track2 뉴스 후보 탐색(수동 큐레이션용)
+├── collect_track2_news.py         # Track2 뉴스 대량 수집(Google News RSS)
+├── build_track2_news_events.py    # 수집된 기사를 뉴스 사건 단위로 클러스터링
+├── refresh_track2_news.py         # SNS 결과 유지한 채 뉴스 사건만 갱신
+├── ensure_news_price_range.py     # 뉴스 사건 기간까지 가격 데이터 범위 보정
+├── backfill_track2_musk_twscrape.py # Track2 Musk 게시물 보조 수집(선택)
 ├── run_intraday_case_study.py     # 분봉 케이스 스터디
-├── dashboard_app.py                # Streamlit 대시보드
+├── dashboard_app.py               # Streamlit 대시보드(시장 반응 / 사건 찾기 / 데이터 질문)
+├── run_streamlit.sh / .bat        # 대시보드 실행 스크립트(macOS·Linux / Windows)
+├── run_news_sample.bat / run_news_full.bat / run_refresh_news_only.bat / run_fix_news_dates.bat
+│                                  # Windows용 뉴스 파이프라인 실행 스크립트
+├── docs/                          # 가이드·검증·진행 기록 문서 모음
+│   ├── PROJECT_GUIDE_KO.md        # 코드 구조·고도화 로드맵
+│   ├── STREAMLIT_UPGRADE_KO.md    # 대시보드 화면 사용 안내
+│   ├── NEWS_UPDATE_GUIDE_KO.txt   # 뉴스 자동 수집 파이프라인 사용 순서
+│   ├── GEMINI_UPDATE_GUIDE_KO.txt # Gemini 3.6 연결 업데이트 안내
+│   ├── implementation_status.md   # 실행·발견·수정 기록(살아있는 상태 문서)
+│   └── *_VALIDATION.md            # 시간 정렬·clustering 등 방법론 검증 리포트
 ├── data/
-│   ├── raw/                       # Kaggle 원본 CSV (직접 채워야 함, 미포함)
+│   ├── raw/                       # 원본 CSV (직접 채워야 함, git에는 미포함)
 │   ├── manual/                    # Track2 수동 이벤트, FOMC 캘린더 등
-│   ├── interim/ processed/        # 파이프라인 중간·최종 산출물
+│   └── interim/ processed/        # 파이프라인 중간·최종 산출물(git에는 미포함)
 ├── outputs/{tables,figures,reports}/  # 통계·차트·리포트 산출물
-├── requirements.txt / requirements-optional.txt
+├── requirements.txt / requirements-optional.txt / requirements-dashboard.txt
 └── README.md
 ```
+
+`data/raw`·`data/interim`·`data/processed`는 `.gitignore`로 제외되어 있습니다 — 원본 CSV가 수만~수십만 행이라 저장소에 커밋하면 clone할 때마다 무겁게 받아야 하고, 새로 데이터를 받을 때마다 계속 커집니다. 대신 아래 [Run](#run) 순서대로 로컬에서 파이프라인을 돌려 생성합니다.
 
 ---
 
@@ -190,7 +224,8 @@ pip install -r requirements.txt
 감성분석·대시보드 등 선택 기능까지 쓰려면:
 
 ```bash
-pip install -r requirements-optional.txt
+pip install -r requirements-optional.txt      # 감성분석(Twitter-RoBERTa) 등
+pip install -r requirements-dashboard.txt     # Streamlit 대시보드 + Gemini(google-genai)
 ```
 
 Kaggle에서 받은 게시물 CSV를 `data/raw/`에 넣어주세요(파일명에 `musk`/`elon`/`trump`/`donald`가 포함되면 자동 인식).
@@ -215,17 +250,15 @@ PYTHONPATH=. .venv/bin/python run_daily_pipeline.py \
 PYTHONPATH=. .venv/bin/streamlit run dashboard_app.py
 ```
 
-Windows에서는 `run_streamlit.bat`을 실행하면 전용 가상환경과 대시보드 패키지를 확인하고, 새 `google-genai` SDK가 없을 때 자동으로 설치합니다. 화면 오른쪽 위 `AI 설정`에서 Gemini를 선택하고 API 키를 입력한 뒤 `실제 연결 테스트`를 눌러야 `연결됨`으로 표시됩니다. 기본 모델은 `gemini-3.6-flash`이며, 같은 설정이 원문 번역·사건 요약·데이터 질문에 공통으로 사용됩니다. 키나 모델을 바꾸면 이전 설정의 실패 결과 캐시는 재사용하지 않습니다.
+macOS/Linux에서는 `bash run_streamlit.sh`, Windows에서는 `run_streamlit.bat`을 더블클릭하면 전용 가상환경과 대시보드 패키지를 확인하고, `google-genai` SDK가 없을 때 자동으로 설치합니다.
 
-Streamlit 화면은 발표용 분석 과정과 분리된 서비스 UI입니다. `시장 반응 / 사건 찾기 / 데이터 질문`의 세 메뉴만 사용하며, 사용자가 전체 데이터 범위 안에서 현재 분석 기간을 바꿀 수 있습니다. 첫 화면의 큰 카드에는 전체 데이터 기간 대신 현재 분석 기간을 표시하고, 전체 범위는 기간 설정 영역에 별도로 안내합니다. 시장 반응 화면에는 종가 선 위에 사건 날짜를 점으로 표시하는 전체 폭 타임라인이 있습니다. 점을 누르면 선택 날짜·종가·사건 목록이 그래프 아래에 넓게 표시되고 상세 분석으로 이어집니다. 계기판과 일론 머스크·도널드 트럼프 캐릭터도 유지했습니다.
+대시보드는 `시장 반응 / 사건 찾기 / 데이터 질문` 3개 메뉴로 구성됩니다.
 
-타임라인에서 날짜 점을 선택하면 `이 날짜에서 자세히 볼 사건` 영역이 강조되어 나타납니다. 같은 날짜에 사건이 여러 건이면 반응 강도가 큰 순서로 선택할 수 있고, 현재 선택한 사건의 인물·주제·실제 등락률·시장 대비 등락률을 한 줄 미리보기로 먼저 확인할 수 있습니다.
+- **시장 반응**: 시장별 최신 사건 계기판(머스크·트럼프 캐릭터 포함) + 종가와 사건을 겹쳐 그린 전체 폭 타임라인. 점을 클릭하면 원문·번역·사건 요약·전후 주가가 그래프 아래에 표시됩니다. 화면 상단 큰 카드는 사용자가 고른 현재 분석 기간을 보여주고, 전체 데이터 범위는 `분석 기간 설정` 영역에서 별도로 안내합니다.
+- **사건 찾기**: 인물·시장·자료 형태(SNS 원문/뉴스)·게시물 분위기·키워드로 사건을 좁혀 같은 상세 카드를 확인합니다.
+- **데이터 질문**: 자유 질문에서 인물·시장·주제·자료 형태를 찾아 pandas로 먼저 계산합니다. AI 연결 없이도 반응이 가장 컸던 사건, 인물·시장 비교, 감성별 반응 비교 같은 질문에 계산형으로 답하며, AI를 연결하면 같은 계산 결과를 자연어로 더 유연하게 설명합니다.
 
-뉴스로 확인한 추가 사례도 같은 시장의 과거 SNS `CLEAN` 사건을 기준으로 계기판 위치를 계산합니다. Track2 뉴스·수동 사례는 SNS 문장 감성분석 대상이 아니므로 `감성 미적용`으로 표시합니다. 계기판에는 잘리지 않는 짧은 사건 미리보기만 두고, 전체 원문·설명은 아래 사건 상세에서 확인합니다.
-
-트럼프의 최신 게시물 조회는 X API를 사용하지 않습니다. 사용자가 버튼을 눌렀을 때 `trumpstruth.org/feed` 비공식 미러 RSS에서 목록을 받고, 각 링크를 Jina Reader로 읽어 본문을 추출합니다. 최근 24시간에 게시물이 없으면 3일·5일·7일 순으로 조회 범위를 넓힙니다. Musk는 무료로 안정적인 실시간 X 소스가 없어 화면의 실시간 조회 대상에서 제외합니다. 새 게시물은 아직 시장 반응이 확정되지 않았으므로 과거 분석 결과에 자동 합산하지 않습니다.
-
-요약과 번역은 화면 진입 시 자동 실행하지 않습니다. AI를 연결하지 않아도 기본 요약과 계산형 데이터 답변이 동작합니다. 영어 원문에는 `원문 한국어로 번역` 버튼이 표시되며, 이미 한국어인 뉴스 설명에는 중복 번역 버튼을 표시하지 않습니다. 한국어 번역은 AI 서비스를 연결하거나, 상단 `AI 설정`에서 기본 온라인 번역을 명시적으로 허용한 뒤 사용할 수 있습니다.
+화면 오른쪽 위 `AI 설정`에서 Gemini를 선택하고 API 키를 입력한 뒤 `실제 연결 테스트`를 눌러야 `연결됨`으로 표시됩니다. 기본 모델은 `gemini-3.6-flash`이며, 같은 설정이 원문 번역·사건 요약·데이터 질문에 공통으로 사용됩니다. 트럼프 최신 게시물 조회는 비공식 Truth Social 미러 RSS + Jina Reader를 쓰므로 별도 API 키가 필요 없습니다. Musk는 무료로 안정적인 실시간 X 소스가 없어 실시간 조회 대상에서 제외됩니다.
 
 AI provider는 화면 상단의 `AI 설정`에서 선택합니다.
 
@@ -239,11 +272,30 @@ export GROQ_API_KEY="..."
 # 로컬 Ollama
 ollama serve
 ollama pull qwen2.5:7b
-
-# 트럼프 최신 게시물 조회는 별도 API 키가 필요하지 않습니다.
 ```
 
-API key가 없더라도 가격 차트·필터·집계·상위 사건 조회·기본 사건 요약은 동작합니다. 데이터 질문은 pandas가 먼저 계산하며, LLM 연결이 없으면 질문 유형별 계산형 답변으로 전환됩니다. 감성 카드를 표시하려면 파이프라인 실행 시 `--add-sentiment`를 포함해야 합니다.
+API key가 없더라도 가격 차트·필터·집계·상위 사건 조회·기본 사건 요약은 동작합니다. 감성 카드를 표시하려면 파이프라인 실행 시 `--add-sentiment`를 포함해야 합니다. 화면 사용법 전체는 [`docs/STREAMLIT_UPGRADE_KO.md`](docs/STREAMLIT_UPGRADE_KO.md), Gemini 연결 문제 해결은 [`docs/GEMINI_UPDATE_GUIDE_KO.txt`](docs/GEMINI_UPDATE_GUIDE_KO.txt)를 참고하세요.
+
+### Track2 뉴스 자동 수집
+
+SNS 원본 범위(~2025-04-13) 밖의 사건을 Google News RSS로 자동 확장합니다. 뉴스에는 감성분석을 적용하지 않고, 기존 SNS Track1 결과는 그대로 유지합니다.
+
+```bash
+# 1) 한 달치 샘플로 먼저 확인 (2025-06)
+.venv/bin/python collect_track2_news.py --start 2025-06-01 --end 2025-06-30 --source google --window-days 15
+.venv/bin/python build_track2_news_events.py
+
+# 2) 대시보드에서 뉴스 사건이 보이는지 확인
+PYTHONPATH=. .venv/bin/streamlit run dashboard_app.py
+
+# 3) 문제 없으면 전체 기간(2023-01-03~2025-10-23) 수집
+.venv/bin/python collect_track2_news.py --start 2023-01-03 --end 2025-10-23 --source google --window-days 15
+.venv/bin/python build_track2_news_events.py
+.venv/bin/python ensure_news_price_range.py   # 뉴스 기간까지 가격 데이터 보정
+.venv/bin/python refresh_track2_news.py       # SNS 결과 유지한 채 뉴스 사건만 반영
+```
+
+수집은 중간에 끊겨도 완료된 구간(`data/interim/news_collection_state.csv`)을 저장하므로 같은 명령을 다시 실행하면 이어서 진행됩니다. Windows에서는 `run_news_sample.bat` → `run_news_full.bat` → `run_refresh_news_only.bat` 순서로 실행하면 동일하게 동작합니다. 자세한 내용은 [`docs/NEWS_UPDATE_GUIDE_KO.txt`](docs/NEWS_UPDATE_GUIDE_KO.txt)를 참고하세요.
 
 ### Topic 분류 검증
 
@@ -253,7 +305,7 @@ API key가 없더라도 가격 차트·필터·집계·상위 사건 조회·기
 .venv/bin/python audit_topics.py --evaluate
 ```
 
-각 옵션(감성분석/novelty/placebo/RIVN 민감도/Track2 내러티브/장중 케이스)의 상세 사용법은 아래 섹션과 [`docs/codebase_reference.md`](../docs/codebase_reference.md)를 참고하세요.
+각 옵션(감성분석/novelty/placebo/RIVN 민감도/Track2 내러티브/장중 케이스)의 상세 사용법은 아래 세부 실행 가이드와 [`docs/PROJECT_GUIDE_KO.md`](docs/PROJECT_GUIDE_KO.md)를 참고하세요.
 
 ---
 
@@ -263,7 +315,7 @@ API key가 없더라도 가격 차트·필터·집계·상위 사건 조회·기
 
 이 결과가 "SNS 데이터가 시장과 무관하다"는 뜻은 아닙니다 — CLEAN 이벤트 정의 자체가 게시물 직후의 이례적 반응이라는 시간적 연관 위에 서 있고, Track2 케이스 스터디(2025-06 결별, 2025-10 관세 발표)는 그 극단적 사례를 구체적으로 보여줍니다. 부정된 것은 "그 반응의 크기가 발언 내용·화자에 따라 체계적으로 달라진다"는 더 좁고 구체적인 주장이며, 이 프로젝트는 그 주장을 검증하는 과정에서 스스로 두 개의 핵심 버그(벤치마크 오류, 키워드 매칭 오류)를 찾아 고쳤다는 점에서 방법론 검증 장치가 의도대로 작동했다고 판단합니다.
 
-자세한 배경·선행연구·전체 결과는 [`docs/final_report.md`](../docs/final_report.md)에서 확인할 수 있습니다.
+자세한 배경·전체 실행 기록·발견 사항은 [`docs/implementation_status.md`](docs/implementation_status.md)에서 확인할 수 있습니다.
 
 ---
 
@@ -278,7 +330,7 @@ API key가 없더라도 가격 차트·필터·집계·상위 사건 조회·기
 
 ## 실행 준비
 
-이 폴더에는 가상환경(`.venv/`)이 포함돼 있지 않습니다. 받은 뒤 각자 새로 만들어야 합니다.
+이 저장소에는 가상환경(`.venv/`)이 포함돼 있지 않습니다. clone한 뒤 각자 새로 만들어야 합니다.
 
 ```bash
 python3 -m venv .venv

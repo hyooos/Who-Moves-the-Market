@@ -18,11 +18,7 @@ data/
 
 **어디서 왔나**: Kaggle에서 받은 CSV 3개(Apify 트위터 스크래퍼 형식 포함) + 팀원이 직접 진행한 EDA 노트북 2개. 전부 사람이 직접 준비한 원본입니다.
 
-**지금 실제로 어디 들어있나**:
-| 위치 | 내용 |
-| --- | --- |
-| `market_mover/data/raw/`(프로젝트 루트) | **진짜 원본.** CSV 3개 + `musk_raw_eda.ipynb`, `trump_raw_eda.ipynb`(EDA 노트북) 전부 여기 있음 |
-| `코드 공유용/data/raw/`(이 폴더) | 위 CSV 3개를 실행용으로 복사해둔 사본. 노트북은 없음(실행에 불필요) |
+이 저장소의 `data/raw/`에 CSV 3개와 두 EDA 노트북을 그대로 넣어두면 됩니다. `.gitignore`로 제외돼 있어 git에는 올라가지 않으니, 새로 clone했다면 각자 다시 채워야 합니다.
 
 | 파일 | 행 수 | 무슨 데이터인가 | 핵심 컬럼 |
 | --- | --- | --- | --- |
@@ -86,6 +82,6 @@ data/
 
 ## 요약: "내가 수집한 데이터 어디 있어?"
 
-- **Kaggle에서 받은 원본 CSV, 직접 만든 EDA 노트북** → `market_mover/data/raw/`(프로젝트 루트)에 원본이 있고, `코드 공유용/data/raw/`에 실행용 사본이 있습니다. 둘 다 사람이 넣은 것 그대로, 코드가 건드리지 않습니다.
-- **분석 결과(이벤트 테이블, 통계, 차트)** → 전부 `코드 공유용/` 안의 `data/interim/`, `data/processed/`, `outputs/`에 자동 생성됩니다. 사람이 직접 만드는 게 아니라 `run_daily_pipeline.py`가 만듭니다.
+- **Kaggle에서 받은 원본 CSV, 직접 만든 EDA 노트북** → `data/raw/`에 원본 그대로 있습니다. 사람이 넣은 것 그대로, 코드가 건드리지 않습니다.
+- **분석 결과(이벤트 테이블, 통계, 차트)** → `data/interim/`, `data/processed/`, `outputs/`에 자동 생성됩니다. 사람이 직접 만드는 게 아니라 `run_daily_pipeline.py`가 만듭니다.
 - **아직 사람 손을 더 타야 하는 것** → `data/manual/track2_curated_events.csv`(0건, Track 2 큐레이션 필요)와 `fomc_calendar.csv`(일부만 채워짐) 두 개뿐입니다.
