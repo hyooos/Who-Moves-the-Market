@@ -3,9 +3,42 @@
 ### 누가 시장을 움직이는가? : 트럼프·일론 머스크 SNS 게시물 기반 주가 반응 분석
 > 도널드 트럼프와 일론 머스크의 SNS 게시물(Truth Social/X)과 실제 금융시장 데이터를 같은 시간축 위에 올려놓고, 어떤 게시물 직후에 가격·거래량·변동성이 평소보다 이례적으로 반응했는지를 통계적으로 검증하는 프로젝트입니다. 미래 주가를 예측하지 않고, "이미 일어난 반응이 우연이 아니라고 방어할 수 있는가"를 목표로 합니다.
 
+## Demo
+
 [![Demo Video](https://img.youtube.com/vi/0LQo-9-9-8Y/maxresdefault.jpg)](https://youtu.be/0LQo-9-9-8Y)
 
 🎥 **시연 영상**: [youtu.be/0LQo-9-9-8Y](https://youtu.be/0LQo-9-9-8Y) — 위 썸네일을 클릭하면 재생됩니다.
+
+로그인이나 API 키 입력 없이 대시보드 자체는 바로 둘러볼 수 있습니다. AI 요약·번역만 선택적으로 키가 필요합니다([Quick Start](#quick-start) 참고).
+
+## 3분 만에 둘러보기
+
+처음 보는 사람이 핵심 기능을 빠르게 확인하는 순서입니다.
+
+**1️⃣ 계기판에서 시작하기** — 대시보드 첫 화면(`시장 반응`)에서 QQQ·SPY·TSLA 계기판을 확인합니다. 바늘은 "그 종목에 매핑된 가장 최근 사건이 과거 CLEAN 사건 대비 몇 백분위인가"를 가리킵니다. 화면 상단의 `분석 기간`을 좁히면 계기판과 아래 타임라인이 같은 기간 기준으로 다시 계산됩니다.
+
+**2️⃣ 재현 가능한 대표 사례 보기** — 종가 타임라인에서 아래 조건을 찾아 클릭해봅니다.
+
+```text
+인물      Elon Musk
+종목      TSLA
+날짜      2024-10-24
+```
+
+아래 수치가 나오는지 확인합니다.
+
+```text
+Musk · TSLA · 2024-10-24 실적 발언
+당일 실제 등락률   +21.9%
+시장 대비 등락률   +20.6%
+반응 강도 점수     12.99  (CLEAN 표본 전체에서 최고값)
+```
+
+**3️⃣ 원문·번역·AI 요약 확인하기** — 사건 상세 카드에서 게시물 원문, `한국어 번역`, `AI 요약·분석 생성`, 전후 캔들 차트를 확인합니다. AI 요약·번역 버튼은 사이드바 `AI 설정`에서 Gemini/Groq/Ollama 중 하나를 연결해야 활성화되며, 연결하지 않아도 계산된 수치 자체는 그대로 보입니다.
+
+**4️⃣ `사건 찾기`로 조건 좁히기** — 인물·시장·자료 형태(SNS 원문/뉴스)·게시물 분위기로 사건을 필터링해 다른 사례를 탐색합니다.
+
+**5️⃣ `데이터 질문`에 직접 물어보기** — "Musk와 Trump 중 누가 더 크게 반응시켰어?" 같은 질문을 입력합니다. AI 연결 없이도 pandas가 먼저 계산한 답을 받고, 그 답은 [Key Findings](#key-findings)의 "ticker 교란" 재해석과 같은 결론(전체로는 차이가 있어 보여도 종목을 고정하면 사라짐)을 가리킵니다 — 결론을 하나 던지고 끝나는 게 아니라, 근거가 되는 계산 결과를 먼저 보여주는 것이 이 프로젝트의 목표입니다.
 
 ## 목차
 
@@ -14,11 +47,15 @@
 3. [Tech Stack](#tech-stack)
 4. [Quick Start](#quick-start)
 5. [How It Works (Pipeline)](#how-it-works-pipeline)
-6. [Key Findings](#key-findings)
-7. [Project Structure](#project-structure)
-8. [Documentation](#documentation)
-9. [Conclusion](#conclusion)
-10. [Notice](#notice)
+6. [Key Metrics](#key-metrics)
+7. [Data Scope](#data-scope)
+8. [Key Findings](#key-findings)
+9. [Current Limitations](#current-limitations)
+10. [Project Structure](#project-structure)
+11. [Documentation](#documentation)
+12. [Review Checklist](#review-checklist)
+13. [Conclusion](#conclusion)
+14. [Notice](#notice)
 
 ---
 
@@ -118,6 +155,17 @@ Windows에서는 `run_news_sample.bat` → `run_news_full.bat` → `run_refresh_
 
 ## How It Works (Pipeline)
 
+```mermaid
+flowchart LR
+A["SNS 원문 수집·정제\nload_posts.py"] --> B["topic 분류·종목 매핑\ntopic_rules.py"]
+B --> C["거래 세션 정렬\nevent_windows.py"]
+C --> D["6시간 사건 clustering\nevent_clustering.py"]
+D --> E["Robust Z-Score 반응 계산\nimpact.py"]
+E --> F["오염 분류\nCLEAN/MINOR/MAJOR"]
+F --> G["가설검정 + FDR 보정\nstats.py"]
+G --> H["대시보드·리포트\ndashboard_app.py"]
+```
+
 1. `load_posts.py`: 서로 다른 Musk/Trump CSV 스키마를 공통 형식으로 바꾸고 원본 ID·URL·UTC/ET 시각을 보존합니다.
 2. `preprocess.py` + `topic_rules.py`: 분석 기간과 시장 관련 키워드를 적용하고 topic·연결 ticker를 정합니다.
 3. `event_windows.py`: ET 기준 09:30 이전은 당일, 09:30~16:00은 당일(부분 일봉 경고), 16:00 이후·주말·휴장일은 다음 거래일에 연결합니다.
@@ -134,6 +182,8 @@ collect_track2_news.py (Google News RSS 기사 수집)
   → ensure_news_price_range.py (필요 시 가격 데이터 기간 보정)
   → refresh_track2_news.py (SNS 결과는 유지한 채 뉴스 사건만 대시보드 데이터에 반영)
 ```
+
+세부 파일 역할과 고도화 순서는 [`docs/PROJECT_GUIDE_KO.md`](docs/PROJECT_GUIDE_KO.md)를 참고하세요.
 
 <details>
 <summary>시간 정렬 · 사건 clustering 원칙 자세히 보기</summary>
@@ -154,6 +204,53 @@ collect_track2_news.py (Google News RSS 기사 수집)
 일봉 하나에 같은 캠페인의 게시물 여러 개가 연결되면 같은 가격 반응을 여러 번 세는 문제가 생깁니다. 기본 분석은 `person + ticker + topic + event_date`가 같고 첫 게시물로부터 6시간 이내인 글을 하나의 사건으로 묶습니다. 직전 글과의 간격이 아니라 첫 글을 기준으로 잡아 cluster가 연쇄적으로 며칠까지 늘어나는 것을 막습니다. `--no-cluster-posts`로 기존 게시물 단위 결과를 재현하거나 `--cluster-hours`로 민감도를 비교할 수 있습니다.
 
 </details>
+
+## Key Metrics
+
+불투명한 단일 점수 대신, 아래 세 계산을 그대로 노출합니다.
+
+**초과수익률(abnormal_return)**
+
+```text
+종목 수익률 - 시장/peer 평균 수익률
+  · TSLA는 GM·F·RIVN peer 평균 대비
+  · QQQ/SPY는 서로를 시장 프록시로, SPY는 자기 자신이면 벤치마크 차감 없이 원 수익률 사용
+```
+
+**Robust Z-Score (median/MAD 기반)**
+
+```text
+z = (오늘 값 - 최근 60거래일 중앙값) / (최근 60거래일 MAD × 1.4826)
+  · 평균/표준편차 대신 중앙값/MAD를 써서 극단치 하나에 스케일이 안 흔들림
+  · "최근 60일"을 매일 다시 계산 → 시기가 지나도 baseline이 그때그때 갱신됨
+```
+
+**반응 강도 점수(impact_score)**
+
+```text
+impact_score = |z_초과수익률| + max(z_거래량, 0) + max(z_변동성, 0)
+```
+
+세 값을 왜 이렇게 계산하게 됐는지(원본 EDA에서 발견한 극단치·결측 문제, robust z-score를 선택한 이유)는 실제 데이터로 검증한 시각 자료를 따로 만들어뒀습니다.
+
+## Data Scope
+
+```text
+원본 게시물 127,246건 (Trump 90,343 + Musk 36,903)
+  → market-relevant 필터링 3,015건 (topic 키워드 매칭)
+  → 6시간 사건 clustering 2,173건 (pseudo-replication 방지)
+  → CLEAN(오염 없음) 359건 (다중게시·FOMC·시장충격 제외, 정식 가설검정 표본)
+
+Track2(SNS 원본 범위 밖) 사건 6건 — 2025-06 결별, 2025-10 관세 발표 등
+```
+
+| 구분 | 범위 |
+| --- | --- |
+| 인물 | Donald Trump(Truth Social/X), Elon Musk(X) |
+| 종목·지수 | TSLA, QQQ, SPY (peer 비교용 GM, F, RIVN 포함) |
+| Track1 분석 기간 | 2023-01-01 ~ 2025-04-13 |
+| Track2 확장 기간 | ~2025-10-23 (Google News RSS 자동 수집) |
+| 가격 데이터 | yfinance 일봉(OHLCV), 이벤트 전후 D-N~D+N 조회 가능 |
 
 ## Key Findings
 
@@ -178,6 +275,16 @@ collect_track2_news.py (Google News RSS 기사 수집)
 - Track2 케이스 스터디에서 2025-10-10 관세 발표가 확장 기간 전체 최대 반응(SPY z=-5.49)으로 확인됨
 
 방법론 검증 과정과 재해석의 전체 기록은 [`docs/implementation_status.md`](docs/implementation_status.md)에서 확인할 수 있습니다.
+
+## Current Limitations
+
+- 발언과 시장 반응의 시간적 연관성은 인과관계 증명이 아닙니다 — CLEAN 분류는 "다른 요인과 안 섞였다"는 뜻이지 "이 발언 때문"이라는 뜻이 아닙니다.
+- 일봉 해상도 기반이라 장중 정밀 타이밍 분석(H5)은 판단을 보류했습니다. 분봉 케이스 스터디는 `run_intraday_case_study.py`로 선택 실행할 수 있습니다.
+- 미국 조기폐장일은 현재 16:00 마감 기준을 그대로 적용합니다(거래소 캘린더 미반영).
+- Musk는 무료로 안정적인 실시간 X 소스가 없어 대시보드 실시간 조회 대상에서 제외했습니다.
+- Track2 뉴스 자동 수집은 Google News 검색 인덱스 기반이라 "전 세계 모든 기사 완전 수집"을 보장하지 않습니다.
+- 대통령 시기 표본(H6, n=8)처럼 특정 그룹 표본이 작아 검정력이 부족한 가설은 있는 그대로 "판단 보류"로 남겨뒀습니다.
+- topic 분류는 키워드 룰 기반이며 정확도는 56%(Trump 쪽이 특히 낮음)로 직접 라벨링해 공개했습니다 — 새 topic이나 표현이 늘면 재검증이 필요합니다.
 
 ## Project Structure
 
@@ -235,6 +342,20 @@ collect_track2_news.py (Google News RSS 기사 수집)
 | [`docs/TIME_ALIGNMENT_VALIDATION.md`](docs/TIME_ALIGNMENT_VALIDATION.md) | UTC→ET 시간 정렬 검증 리포트 |
 | [`docs/CLUSTERING_VALIDATION.md`](docs/CLUSTERING_VALIDATION.md) | 6시간 사건 clustering 기준 검증 리포트 |
 | [`docs/BASELINE_RESULTS_2_REVIEW.md`](docs/BASELINE_RESULTS_2_REVIEW.md) | 시간대 수정 전후 가설검정 결과 비교 |
+
+## Review Checklist
+
+- [x] 실제 SNS 원문과 출처(원본 게시물 ID·URL) 보존
+- [x] 실제 시장 종가·거래량(yfinance) 기반 반응 계산
+- [x] robust z-score(median/MAD) + 2-pass baseline
+- [x] 다중게시·매크로(FOMC)·시장충격 오염 분류 → CLEAN 표본만 정식 검정
+- [x] Placebo 순열검정(200회) + FDR 다중비교 보정
+- [x] ticker 교란 통제 보조검정으로 원 결과 재해석
+- [x] topic 분류 정확도 직접 라벨링·공개(56%)
+- [x] SNS 사건 + 뉴스 자동 수집(Track2) 이원 구조
+- [x] 원문·번역·AI 요약과 계산 결과(pandas) 분리 — AI 연결 없이도 핵심 기능 동작
+- [x] 발견한 버그(SPY 자기 벤치마크, topic 키워드 경계) 전후 결과 투명 공개
+- [x] 한계·판단 보류 항목 명시(H5, H6, topic 정확도 등)
 
 ## Conclusion
 
