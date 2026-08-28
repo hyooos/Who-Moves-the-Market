@@ -9,53 +9,7 @@
 
 🎥 **시연 영상**: [youtu.be/0LQo-9-9-8Y](https://youtu.be/0LQo-9-9-8Y) — 위 썸네일을 클릭하면 재생됩니다.
 
-로그인이나 API 키 입력 없이 대시보드 자체는 바로 둘러볼 수 있습니다. AI 요약·번역만 선택적으로 키가 필요합니다([Quick Start](#quick-start) 참고).
-
-## 3분 만에 둘러보기
-
-처음 보는 사람이 핵심 기능을 빠르게 확인하는 순서입니다.
-
-**1️⃣ 계기판에서 시작하기** — 대시보드 첫 화면(`시장 반응`)에서 QQQ·SPY·TSLA 계기판을 확인합니다. 바늘은 "그 종목에 매핑된 가장 최근 사건이 과거 CLEAN 사건 대비 몇 백분위인가"를 가리킵니다. 화면 상단의 `분석 기간`을 좁히면 계기판과 아래 타임라인이 같은 기간 기준으로 다시 계산됩니다.
-
-**2️⃣ 재현 가능한 대표 사례 보기** — 종가 타임라인에서 아래 조건을 찾아 클릭해봅니다.
-
-```text
-인물      Elon Musk
-종목      TSLA
-날짜      2024-10-24
-```
-
-아래 수치가 나오는지 확인합니다.
-
-```text
-Musk · TSLA · 2024-10-24 실적 발언
-당일 실제 등락률   +21.9%
-시장 대비 등락률   +20.6%
-반응 강도 점수     12.99  (CLEAN 표본 전체에서 최고값)
-```
-
-**3️⃣ 원문·번역·AI 요약 확인하기** — 사건 상세 카드에서 게시물 원문, `한국어 번역`, `AI 요약·분석 생성`, 전후 캔들 차트를 확인합니다. AI 요약·번역 버튼은 사이드바 `AI 설정`에서 Gemini/Groq/Ollama 중 하나를 연결해야 활성화되며, 연결하지 않아도 계산된 수치 자체는 그대로 보입니다.
-
-**4️⃣ `사건 찾기`로 조건 좁히기** — 인물·시장·자료 형태(SNS 원문/뉴스)·게시물 분위기로 사건을 필터링해 다른 사례를 탐색합니다.
-
-**5️⃣ `데이터 질문`에 직접 물어보기** — "Musk와 Trump 중 누가 더 크게 반응시켰어?" 같은 질문을 입력합니다. AI 연결 없이도 pandas가 먼저 계산한 답을 받고, 그 답은 [Key Findings](#key-findings)의 "ticker 교란" 재해석과 같은 결론(전체로는 차이가 있어 보여도 종목을 고정하면 사라짐)을 가리킵니다 — 결론을 하나 던지고 끝나는 게 아니라, 근거가 되는 계산 결과를 먼저 보여주는 것이 이 프로젝트의 목표입니다.
-
-## 목차
-
-1. [Overview](#overview)
-2. [Key Features](#key-features)
-3. [Tech Stack](#tech-stack)
-4. [Quick Start](#quick-start)
-5. [How It Works (Pipeline)](#how-it-works-pipeline)
-6. [Key Metrics](#key-metrics)
-7. [Data Scope](#data-scope)
-8. [Key Findings](#key-findings)
-9. [Current Limitations](#current-limitations)
-10. [Project Structure](#project-structure)
-11. [Documentation](#documentation)
-12. [Review Checklist](#review-checklist)
-13. [Conclusion](#conclusion)
-14. [Notice](#notice)
+로그인이나 API 키 입력 없이 대시보드 자체는 바로 둘러볼 수 있습니다. AI 요약·번역만 선택적으로 키가 필요합니다(Quick Start 참고).
 
 ---
 
@@ -85,13 +39,59 @@ Track1(2023-01~2025-04, 통계적 가설검정)과 Track2(2025-06 결별·2025-1
 
 ## Tech Stack
 
-| 구분 | 스택 |
-| --- | --- |
-| Language | ![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white) |
-| Data Processing & Analysis | ![Pandas](https://img.shields.io/badge/Pandas-150458?style=flat-square&logo=pandas&logoColor=white) ![NumPy](https://img.shields.io/badge/NumPy-013243?style=flat-square&logo=numpy&logoColor=white) ![SciPy](https://img.shields.io/badge/SciPy-8CAAE6?style=flat-square&logo=scipy&logoColor=white) ![statsmodels](https://img.shields.io/badge/statsmodels-3776AB?style=flat-square) |
-| Machine Learning & NLP | ![PyTorch](https://img.shields.io/badge/PyTorch-EE4C2C?style=flat-square&logo=pytorch&logoColor=white) ![Transformers](https://img.shields.io/badge/Transformers-FFD21E?style=flat-square&logo=huggingface&logoColor=black) ![Twitter-RoBERTa](https://img.shields.io/badge/Twitter--RoBERTa-1DA1F2?style=flat-square) ![Ollama](https://img.shields.io/badge/Ollama-000000?style=flat-square) ![Qwen2.5](https://img.shields.io/badge/Qwen2.5-6A1B9A?style=flat-square) ![Gemini 3.6 Flash](https://img.shields.io/badge/Gemini%203.6%20Flash-8E75B2?style=flat-square&logo=googlegemini&logoColor=white) |
-| Market & News Data | ![yfinance](https://img.shields.io/badge/yfinance-8A2BE2?style=flat-square) ![Google News RSS](https://img.shields.io/badge/Google%20News%20RSS-4285F4?style=flat-square&logo=googlenews&logoColor=white) ![Robust Z-Score](https://img.shields.io/badge/Robust%20Z--Score-1E88E5?style=flat-square) ![FDR](https://img.shields.io/badge/FDR%20(Benjamini--Hochberg)-43A047?style=flat-square) ![Placebo Test](https://img.shields.io/badge/Placebo%20Test-5E35B1?style=flat-square) |
-| Visualization & Dashboard | ![Plotly](https://img.shields.io/badge/Plotly-3F4F75?style=flat-square&logo=plotly&logoColor=white) ![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?style=flat-square&logo=streamlit&logoColor=white) ![Jinja2](https://img.shields.io/badge/Jinja2-B41717?style=flat-square&logo=jinja&logoColor=white) |
+#### Language
+
+<p>
+  <img src="https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white" height="28"/>
+</p>
+
+---
+
+#### Data Processing & Analysis
+
+<p>
+  <img src="https://img.shields.io/badge/Pandas-150458?style=flat-square&logo=pandas&logoColor=white" height="28"/>
+  <img src="https://img.shields.io/badge/NumPy-013243?style=flat-square&logo=numpy&logoColor=white" height="28"/>
+  <img src="https://img.shields.io/badge/SciPy-8CAAE6?style=flat-square&logo=scipy&logoColor=white" height="28"/>
+  <img src="https://img.shields.io/badge/statsmodels-3776AB?style=flat-square" height="28"/>
+</p>
+
+---
+
+#### Machine Learning & NLP
+
+<p>
+  <img src="https://img.shields.io/badge/PyTorch-EE4C2C?style=flat-square&logo=pytorch&logoColor=white" height="28"/>
+  <img src="https://img.shields.io/badge/Transformers-FFD21E?style=flat-square&logo=huggingface&logoColor=black" height="28"/>
+  <img src="https://img.shields.io/badge/Twitter--RoBERTa-1DA1F2?style=flat-square" height="28"/>
+  <img src="https://img.shields.io/badge/Ollama-000000?style=flat-square" height="28"/>
+  <img src="https://img.shields.io/badge/Qwen2.5-6A1B9A?style=flat-square" height="28"/>
+  <img src="https://img.shields.io/badge/Gemini%203.6%20Flash-8E75B2?style=flat-square&logo=googlegemini&logoColor=white" height="28"/>
+</p>
+
+---
+
+#### Market & News Data
+
+<p>
+  <img src="https://img.shields.io/badge/yfinance-8A2BE2?style=flat-square" height="28"/>
+  <img src="https://img.shields.io/badge/Google%20News%20RSS-4285F4?style=flat-square&logo=googlenews&logoColor=white" height="28"/>
+  <img src="https://img.shields.io/badge/Robust%20Z--Score-1E88E5?style=flat-square" height="28"/>
+  <img src="https://img.shields.io/badge/FDR%20(Benjamini--Hochberg)-43A047?style=flat-square" height="28"/>
+  <img src="https://img.shields.io/badge/Placebo%20Test-5E35B1?style=flat-square" height="28"/>
+</p>
+
+---
+
+#### Visualization & Dashboard
+
+<p>
+  <img src="https://img.shields.io/badge/Plotly-3F4F75?style=flat-square&logo=plotly&logoColor=white" height="28"/>
+  <img src="https://img.shields.io/badge/Streamlit-FF4B4B?style=flat-square&logo=streamlit&logoColor=white" height="28"/>
+  <img src="https://img.shields.io/badge/Jinja2-B41717?style=flat-square&logo=jinja&logoColor=white" height="28"/>
+</p>
+
+---
 
 ## Quick Start
 
